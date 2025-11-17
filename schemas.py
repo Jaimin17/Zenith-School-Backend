@@ -31,7 +31,10 @@ class Token(SQLModel):
     token_type: str
 
 class TokenPayload(SQLModel):
-    sub: str | None = None
+    sub: str # username
+    role: str # role
+    user_id: str # id
+    exp: int | None = None
 
 
 # ===================== Base Schemas =====================

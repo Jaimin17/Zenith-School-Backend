@@ -30,6 +30,7 @@ class User(SQLModel, table=True):
 class Admin(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     username: str = Field(unique=True, nullable=False)
+    password: str = Field(nullable=False)
 
 
 # ===================== Enums =====================
@@ -56,6 +57,7 @@ class Parent(SQLModel, table=True):
     email: EmailStr = Field(unique=True, nullable=False)
     phone: str = Field(nullable=False, unique=True)
     address: str = Field(nullable=False, min_length=5)
+    password: str = Field(nullable=False)
     created_at: datetime = Field(default_factory=datetime.now, nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
 
@@ -91,6 +93,7 @@ class Teacher(SQLModel, table=True):
     img: Optional[str] = Field(default=None)
     blood_type: str = Field(nullable=False)
     sex: UserSex = Field(nullable=False)
+    password: str = Field(nullable=False)
     created_at: datetime = Field(default_factory=datetime.now, nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
 
@@ -116,6 +119,7 @@ class Event(SQLModel, table=True):
     description: str = Field(nullable=False)
     start_time: datetime = Field(nullable=False)
     end_time: datetime = Field(nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
 
     class_id: Optional[uuid.UUID] = Field(default=None, foreign_key="class.id")
     related_class: Optional["Class"] = Relationship(back_populates="events")
@@ -126,6 +130,8 @@ class Announcement(SQLModel, table=True):
     title: str = Field(nullable=False)
     description: str = Field(nullable=False)
     announcement_date: date = Field(default_factory=date.today, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
+
 
     class_id: Optional[uuid.UUID] = Field(default=None, foreign_key="class.id")
     related_class: Optional["Class"] = Relationship(back_populates="announcements")
@@ -165,6 +171,7 @@ class Student(SQLModel, table=True):
     img: Optional[str] = Field(default=None)
     blood_type: str = Field(nullable=False)
     sex: UserSex = Field(nullable=False)
+    password: str = Field(nullable=False)
     created_at: datetime = Field(default_factory=datetime.now, nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
 
