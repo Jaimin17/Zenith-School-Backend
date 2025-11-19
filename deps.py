@@ -94,6 +94,11 @@ AdminUser = Annotated[
     Depends(require_roles(UserRole.ADMIN))
 ]
 
+StudentOrTeacherOrAdminUser = Annotated[
+    tuple[Union[Admin, Parent, Teacher, Student], str],
+    Depends(require_roles(UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN))
+]
+
 TeacherOrAdminUser = Annotated[
     tuple[Union[Admin, Parent, Teacher, Student], str],
     Depends(require_roles(UserRole.ADMIN, UserRole.TEACHER))
@@ -107,4 +112,9 @@ ParentUser = Annotated[
 StudentUser = Annotated[
     tuple[Union[Admin, Parent, Teacher, Student], str],
     Depends(require_roles(UserRole.STUDENT))
+]
+
+AllUser = Annotated[
+    tuple[Union[Admin, Parent, Teacher, Student], str],
+    Depends(require_roles(UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT, UserRole.PARENT))
 ]
