@@ -4,7 +4,7 @@ from sqlalchemy import Select, func
 from sqlmodel import Session, select
 
 from core.config import settings
-from models import Lesson, Teacher, Class
+from models import Lesson, Teacher, Class, Student
 
 
 def addSearchOption(query: Select, search: str):
@@ -62,6 +62,25 @@ def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, searc
         select(Lesson)
         .where(
             Lesson.class_id == classId,
+            Lesson.is_delete == False
+        )
+    )
+
+    query = addSearchOption(query, search)
+
+    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
+    all_lessons = session.exec(query).unique().all()
+    return all_lessons
+
+def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int):
+    offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    query = (
+        select(Lesson)
+        .join(Class, onclause=(Class.id == Lesson.class_id))
+        .join(Student, onclause=(Student.class_id == Class.id))
+        .where(
+            Student.parent_id == parentId,
             Lesson.is_delete == False
         )
     )
