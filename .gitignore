@@ -1,0 +1,55 @@
+# -------------------------
+# Python / FastAPI project
+# -------------------------
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+zenithenv/
+
+# IDE / Editor files
+.idea/
+.vscode/
+
+# Environment variables
+.env
+*.env
+
+# PyCharm / JetBrains
+*.iml
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Logs
+*.log
+
+# MyPy / Pyright
+.mypy_cache/
+.pyright/
+
+# Cache
+.cache/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Local DB or temp files
+*.sqlite3
+*.db
+*.sqlite
+
+# Optional: Ignore uploads/temp
+uploads/
+tmp/
