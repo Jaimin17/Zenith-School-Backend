@@ -1,10 +1,11 @@
+from datetime import datetime, date
 from typing import List
 from core.database import SessionDep
 from fastapi import APIRouter
-from deps import CurrentUser, AllUser
+from deps import CurrentUser, AllUser, AdminUser
 from repository.events import getAllEventsIsDeleteFalse, getAllEventsByTeacherAndIsDeleteFalse, \
-    getAllEventsByStudentAndIsDeleteFalse, getAllEventsByParentAndIsDeleteFalse
-from schemas import EventRead
+    getAllEventsByStudentAndIsDeleteFalse, getAllEventsByParentAndIsDeleteFalse, getAllEventsByDate
+from schemas import EventRead, EventBase
 
 router = APIRouter(
     prefix="/events",
@@ -22,3 +23,10 @@ def getAllEvents(current_user: AllUser, session: SessionDep, search: str = None,
     else:
         all_events = getAllEventsByParentAndIsDeleteFalse(user.id, session, search, page)
     return all_events
+
+@router.get("/getAllByDate", response_model=List[EventBase])
+def getAllByDate(current_user: AdminUser, session: SessionDep, selectDate: str | None = None):
+    searchDate = date.fromisoformat(selectDate) if selectDate is not None else date.today()
+    print(f"Search Date is: {searchDate}")
+    events = getAllEventsByDate(session, searchDate)
+    return events

@@ -1,6 +1,8 @@
+from datetime import date, time
+
 from sqlalchemy import Select, func
 from sqlmodel import Session, select
-
+from datetime import datetime
 from core.config import settings
 from models import Event, Class, Student
 
@@ -19,12 +21,28 @@ def addSearchOption(query: Select, search: str):
 
     return query
 
+def getAllEventsByDate(session: Session, searchDate: date):
+    day_start = datetime.combine(searchDate, time.min)
+    day_end = datetime.combine(searchDate, time.max)
+    print(f"From {day_start} to {day_end}")
+    query = (
+        select(Event)
+        .where(
+            Event.is_delete == False,
+            Event.start_time <= day_end,
+            Event.end_time >= day_start
+        )
+    )
+
+    events = session.exec(query).unique().all()
+    return events
+
 def getAllEventsIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     query = (
         select(Event)
-        .join(Class, onclause=(Class.id == Event.class_id))
+        .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
         .where(Event.is_delete == False)
     )
 
