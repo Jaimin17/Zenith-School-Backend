@@ -18,6 +18,10 @@ def addSearchOption(query: Select, search: str):
 
     return query
 
+def countTeacher(session: Session):
+    return session.exec(
+        select(func.count()).select_from(Teacher).where(Teacher.is_delete == False)
+    ).first()
 
 def getAllTeachersIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE

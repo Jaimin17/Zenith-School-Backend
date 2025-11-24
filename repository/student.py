@@ -18,6 +18,24 @@ def addSearchOption(query: Select, search: str):
     return query
 
 
+def countStudent(session: Session):
+    return session.exec(
+        select(func.count()).select_from(Student).where(Student.is_delete == False)
+    ).first()
+
+
+def countStudentBySexAll(session: Session):
+    query = (
+        select(Student.sex, func.count())
+        .select_from(Student)
+        .where(Student.is_delete == False)
+        .group_by(Student.sex)
+    )
+
+    results = session.exec(query).all()
+    return {sex: count for sex, count in results}
+
+
 def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 

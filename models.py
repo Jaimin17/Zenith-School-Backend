@@ -31,6 +31,8 @@ class Admin(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     username: str = Field(unique=True, nullable=False)
     password: str = Field(nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
+
 
 
 # ===================== Enums =====================

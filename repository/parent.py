@@ -16,6 +16,11 @@ def addSearchOption(query: Select, search: str):
 
     return query
 
+def countParent(session: Session):
+    return session.exec(
+        select(func.count()).select_from(Parent).where(Parent.is_delete == False)
+    ).first()
+
 def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 1):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 

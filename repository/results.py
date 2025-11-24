@@ -133,3 +133,29 @@ def getAllResultsOfStudentIsDeleteFalse(studentId: uuid.UUID, session: Session, 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_results = session.exec(query).unique().all()
     return all_results
+
+def getAllResultsOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int):
+    offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    query = (
+        select(Result)
+        .join(Student, Student.id == Result.student_id)
+        .join(Exam, Exam.id == Result.exam_id, isouter=True)
+        .join(Assignment, Assignment.id == Result.assignment_id, isouter=True)
+        .join(
+            Lesson,
+            (Lesson.id == Exam.lesson_id) | (Lesson.id == Assignment.lesson_id),
+            isouter=True
+        )
+        .join(Teacher, Teacher.id == Lesson.teacher_id, isouter=True)
+        .where(
+            Student.parent_id == parentId,
+            Result.is_delete == False
+        )
+    )
+
+    query = addSearchOption(query, search)
+
+    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
+    all_results = session.exec(query).unique().all()
+    return all_results
