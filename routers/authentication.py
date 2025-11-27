@@ -2,17 +2,19 @@ from datetime import timedelta
 from enum import Enum
 from typing import Any, Union
 
-from deps import CurrentUser, require_roles, UserRole, AdminUser, TeacherOrAdminUser
+from jwt import PyJWTError
+from core.config import settings
+from deps import CurrentUser, UserRole, AdminUser, TeacherOrAdminUser, AllUser, TokenDep
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 from core.database import SessionDep
-from core.security import verify_password, create_access_token
-from models import User, Admin, Teacher, Parent, Student
-from schemas import Token, UserPublic
+from core.security import verify_password, create_access_token, create_refresh_token, decode_refresh_token, secureLogout
+from models import User, Admin, Teacher, Parent, Student, BlacklistToken
+from schemas import Token, UserPublic, RefreshTokenRequest
 
 router = APIRouter(
-    prefix="/login"
+    prefix="/auth"
 )
 
 
@@ -50,29 +52,89 @@ def get_user_by_username(username: str, session: Session) -> tuple[Union[Admin, 
 
 
 @router.post("/access-token", response_model=Token)
-def login_access_token(session: SessionDep, request: OAuth2PasswordRequestForm = Depends()):
+def login_access_token(
+    session: SessionDep,
+    request: OAuth2PasswordRequestForm = Depends()
+):
     user_data = get_user_by_username(request.username, session)
+
     if not user_data:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
     db_user, role = user_data
 
-    # Note: You'll need to add password field to your models
     if not verify_password(request.password, db_user.password):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
-    # Check if user is soft-deleted (except Admin which doesn't have is_delete)
-    if role != "admin" and hasattr(db_user, 'is_delete') and db_user.is_delete:
+    if role != "admin" and getattr(db_user, "is_delete", False):
         raise HTTPException(status_code=400, detail="Inactive user")
 
-    # Create token with role information
-    access_token = create_access_token(subject={
+    payload = {
         "sub": db_user.username,
-        "role": role,
-        "user_id": str(db_user.id) # Include user ID for easier lookups
+        "user_id": str(db_user.id),
+        "role": role
+    }
+
+    access_token = create_access_token(payload)
+    refresh_token = create_refresh_token(payload)
+
+    print(f"refresh_token: {refresh_token}")
+
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer"
+    )
+
+
+@router.post("/refresh", response_model=Token)
+def refresh_access_token(data: RefreshTokenRequest):
+    refresh_token = data.refresh_token
+
+    try:
+        payload = decode_refresh_token(refresh_token)
+
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+
+        username = payload.get("sub")
+        user_id = payload.get("user_id")
+        role = payload.get("role")
+
+        if username is None or user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    except PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    new_access_token = create_access_token({
+        "sub": username,
+        "user_id": user_id,
+        "role": role
     })
 
-    return Token(access_token=access_token, token_type="bearer")
+    return Token(
+        access_token=new_access_token,
+        refresh_token=refresh_token,  # keep same refresh token
+        token_type="bearer"
+    )
+
+
+@router.post("/logout", response_model=str)
+def logout(current_user: AllUser, token: TokenDep, request: RefreshTokenRequest, session: SessionDep):
+    access_token = token
+    refresh_token = request.refresh_token
+
+    db_user, role = current_user
+
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Access token is required")
+
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="Refresh token is required")
+
+    return secureLogout(db_user.id, access_token, refresh_token, session)
+
 
 @router.post("/test-token", response_model=UserPublic)
 def test_token(current_user: CurrentUser) -> Any:

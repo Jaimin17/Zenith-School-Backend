@@ -266,3 +266,11 @@ class Attendance(SQLModel, table=True):
 
     lesson_id: Optional[uuid.UUID] = Field(default=None, foreign_key="lesson.id")
     lesson: Optional["Lesson"] = Relationship(back_populates="attendances")
+
+
+class BlacklistToken(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(nullable=False)
+    access_token: str = Field(nullable=False)
+    refresh_token: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)

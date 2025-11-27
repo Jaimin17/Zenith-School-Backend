@@ -28,7 +28,12 @@ class UserPublic(SQLModel):
 
 class Token(SQLModel):
     access_token: str
+    refresh_token: str
     token_type: str
+
+class RefreshTokenRequest(SQLModel):
+    refresh_token: str
+
 
 class TokenPayload(SQLModel):
     sub: str # username
@@ -42,6 +47,15 @@ class TokenPayload(SQLModel):
 class SubjectBase(SQLModel):
     id: uuid.UUID
     name: str
+
+
+class SubjectSave(SQLModel):
+    name: str
+
+
+class SubjectSaveResponse(SQLModel):
+    id: str
+    message: str
 
 
 class GradeBase(SQLModel):
