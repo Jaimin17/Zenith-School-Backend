@@ -48,15 +48,21 @@ class SubjectBase(SQLModel):
     id: uuid.UUID
     name: str
 
+class SubjectUpdateBase(SQLModel):
+    id: uuid.UUID
+    name: str
+    teachersList: List[uuid.UUID]
+
 
 class SubjectSave(SQLModel):
     name: str
+    teachersList: List[uuid.UUID]
 
 
 class SubjectSaveResponse(SQLModel):
     id: str
     message: str
-
+    lessons_affected: int | None
 
 class GradeBase(SQLModel):
     id: uuid.UUID

@@ -136,22 +136,22 @@ def logout(current_user: AllUser, token: TokenDep, request: RefreshTokenRequest,
     return secureLogout(db_user.id, access_token, refresh_token, session)
 
 
-@router.post("/test-token", response_model=UserPublic)
-def test_token(current_user: CurrentUser) -> Any:
-    return current_user
-
-# Example usage in routes:
-@router.get("/admin-only")
-def admin_only_route(
-    current_user: AdminUser
-):
-    user, role = current_user
-    return {"message": "Admin access granted", "user": user.username}
-
-
-@router.get("/teacher-or-admin")
-def teacher_admin_route(
-    current_user: TeacherOrAdminUser
-):
-    user, role = current_user
-    return {"message": f"Access granted as {role}", "user": user.username}
+# @router.post("/test-token", response_model=UserPublic)
+# def test_token(current_user: CurrentUser) -> Any:
+#     return current_user
+#
+# # Example usage in routes:
+# @router.get("/admin-only")
+# def admin_only_route(
+#     current_user: AdminUser
+# ):
+#     user, role = current_user
+#     return {"message": "Admin access granted", "user": user.username}
+#
+#
+# @router.get("/teacher-or-admin")
+# def teacher_admin_route(
+#     current_user: TeacherOrAdminUser
+# ):
+#     user, role = current_user
+#     return {"message": f"Access granted as {role}", "user": user.username}

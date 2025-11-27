@@ -4,8 +4,8 @@ from typing import List
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AdminUser
-from repository.subject import getAllSubjectsIsDeleteFalse, subjectSave, SubjectUpdate, SubjectSoftDelete
-from schemas import SubjectRead, SubjectBase, SubjectSave, SubjectSaveResponse
+from repository.subject import getAllSubjectsIsDeleteFalse, subjectSave, SubjectUpdate, SubjectSoftDelete_with_lesson
+from schemas import SubjectRead, SubjectBase, SubjectSave, SubjectSaveResponse, SubjectUpdateBase
 
 router = APIRouter(
     prefix="/subject",
@@ -26,7 +26,7 @@ def saveSubject(current_user: AdminUser, subject: SubjectSave, session: SessionD
 
 
 @router.put("/update", response_model=SubjectSaveResponse)
-def updateSubject(current_user: AdminUser, data: SubjectBase, session: SessionDep):
+def updateSubject(current_user: AdminUser, data: SubjectUpdateBase, session: SessionDep):
     if not data.id:
         raise HTTPException(
             status_code=400,
@@ -50,5 +50,5 @@ def softDeleteSubject(current_user: AdminUser, id: uuid.UUID, session: SessionDe
             detail="Subject ID is required for deleting."
         )
 
-    result = SubjectSoftDelete(id, session)
+    result = SubjectSoftDelete_with_lesson(id, session)
     return result

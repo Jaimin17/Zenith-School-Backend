@@ -1,12 +1,13 @@
 import uuid
 
 from fastapi import HTTPException
+from psycopg import IntegrityError
 from sqlalchemy import Select, func
 from sqlmodel import Session, select, insert
 
 from core.config import settings
-from models import Subject
-from schemas import SubjectSave, SubjectBase
+from models import Subject, Teacher, Lesson
+from schemas import SubjectSave, SubjectBase, SubjectUpdateBase
 
 
 def addSearchOption(query: Select, search: str):
@@ -43,20 +44,47 @@ def subjectSave(subject: SubjectSave, session: Session):
     if existing:
         raise HTTPException(status_code=400, detail="Subject already exists")
 
-    # 2. Create subject
-    new_subject = Subject(name=subject.name)
-    session.add(new_subject)
-    session.flush()  # ensure new_subject.id is generated
+    teachers_list_ids = subject.teachersList or []
+    if teachers_list_ids:
+        teacher_query = (
+            select(Teacher)
+            .where(Teacher.id.in_(teachers_list_ids), Teacher.is_delete == False)
+        )
 
-    session.commit()
+        teachers = session.exec(teacher_query).all()
+        found_ids = {t.id for t in teachers}
+
+        missing = [str(tid) for tid in teachers_list_ids if tid not in found_ids]
+        if missing:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No teacher(s) found with the provided ID(s): {', '.join(missing)}"
+            )
+    else:
+        teachers = []
+
+    new_subject = Subject(name=subject.name)
+    new_subject.teachers = teachers
+
+    session.add(new_subject)
+
+    try:
+        session.flush()  # ensure new_subject.id is generated
+        session.commit()
+    except IntegrityError as e:
+        session.rollback()
+        raise HTTPException(status_code=400, detail="Subject already exists (unique constraint)")
+
+
     session.refresh(new_subject)
 
     return {
         "id": str(new_subject.id),
-        "message": "Subject created successfully"
+        "message": "Subject created successfully",
+        "lessons_affected": None
     }
 
-def SubjectUpdate(data: SubjectBase, session: Session):
+def SubjectUpdate(data: SubjectUpdateBase, session: Session):
     findSubjectQuery = (
         select(Subject)
         .where(Subject.id == data.id, Subject.is_delete == False)
@@ -77,18 +105,45 @@ def SubjectUpdate(data: SubjectBase, session: Session):
     if existing:
         raise HTTPException(status_code=400, detail="A subject with the same name already exists.")
 
+    teachers_list_ids = data.teachersList or []
+    if teachers_list_ids:
+        teacher_query = (
+            select(Teacher)
+            .where(Teacher.id.in_(teachers_list_ids), Teacher.is_delete == False)
+        )
+
+        teachers = session.exec(teacher_query).all()
+        found_ids = {t.id for t in teachers}
+
+        missing = [str(tid) for tid in teachers_list_ids if tid not in found_ids]
+        if missing:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No teacher(s) found with the provided ID(s): {', '.join(missing)}"
+            )
+    else:
+        teachers = []
+
     currentSubject.name = data.name
+    currentSubject.teachers = teachers
 
     session.add(currentSubject)
-    session.commit()
+
+    try:
+        session.commit()
+    except IntegrityError as e:
+        session.rollback()
+        raise HTTPException(status_code=400, detail="Subject already exists (unique constraint)")
+
     session.refresh(currentSubject)
 
     return {
         "id": str(currentSubject.id),
-        "message": "Subject updated successfully"
+        "message": "Subject updated successfully",
+        "lessons_affected": None
     }
 
-def SubjectSoftDelete(id: uuid.UUID, session: Session):
+def SubjectSoftDelete_with_lesson(id: uuid.UUID, session: Session):
     findSubject = (
         select(Subject)
         .where(Subject.id == id, Subject.is_delete == False)
@@ -99,13 +154,29 @@ def SubjectSoftDelete(id: uuid.UUID, session: Session):
     if currentSubject is None:
         raise HTTPException(status_code=404, detail="No subject found with the provided ID.")
 
+    currentSubject.teachers.clear()
+
+    lesson_query = (
+        select(Lesson)
+        .where(Lesson.subject_id == id, Lesson.is_delete == False)
+    )
+
+    lessons = session.exec(lesson_query).all()
+
+    for lesson in lessons:
+        lesson.is_delete = True
+
     currentSubject.is_delete = True
 
-    session.add(currentSubject)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=500, detail="Error deleting subject")
     session.refresh(currentSubject)
 
     return {
         "id": str(currentSubject.id),
-        "message": "Subject deleted successfully"
+        "message": "Subject deleted successfully",
+        "lessons_affected": len(lessons)
     }
