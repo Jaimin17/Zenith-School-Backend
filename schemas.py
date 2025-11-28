@@ -48,21 +48,6 @@ class SubjectBase(SQLModel):
     id: uuid.UUID
     name: str
 
-class SubjectUpdateBase(SQLModel):
-    id: uuid.UUID
-    name: str
-    teachersList: List[uuid.UUID]
-
-
-class SubjectSave(SQLModel):
-    name: str
-    teachersList: List[uuid.UUID]
-
-
-class SubjectSaveResponse(SQLModel):
-    id: str
-    message: str
-    lessons_affected: int | None
 
 class GradeBase(SQLModel):
     id: uuid.UUID
@@ -167,11 +152,26 @@ class ClassRead(ClassBase):
     supervisor: Optional[TeacherBase] = None
     grade: Optional[GradeBase] = None
 
+class ClassSaveResponse(SQLModel):
+    id: str
+    message: str
 
-class StudentRead(StudentBase):
-    parent: Optional[ParentBase] = None
-    related_class: Optional[ClassBase] = None
-    grade: Optional[GradeBase] = None
+class ClassSave(SQLModel):
+    name: str
+    capacity: int
+    supervisorId: Optional[uuid.UUID] = None
+    gradeId: uuid.UUID
+
+class ClassUpdateBase(ClassSave):
+    id: uuid.UUID
+
+class ClassDeleteResponse(SQLModel):
+    id: str
+    message: str
+    lessons_affected: int
+    students_affected: int
+    events_affected: int
+    announcements_affected: int
 
 
 class TeacherRead(TeacherBase):
@@ -185,6 +185,30 @@ class ParentRead(ParentBase):
 
 class SubjectRead(SubjectBase):
     teachers: List[TeacherBase] = []
+
+
+class SubjectUpdateBase(SQLModel):
+    id: uuid.UUID
+    name: str
+    teachersList: List[uuid.UUID]
+
+
+class StudentRead(StudentBase):
+    parent: Optional[ParentBase] = None
+    related_class: Optional[ClassBase] = None
+    grade: Optional[GradeBase] = None
+
+
+class SubjectSave(SQLModel):
+    name: str
+    teachersList: List[uuid.UUID]
+
+
+class SubjectSaveResponse(SQLModel):
+    id: str
+    message: str
+    lessons_affected: int | None
+
 
 class LessonRead(LessonBase):
     teacher: Optional[TeacherBase] = None

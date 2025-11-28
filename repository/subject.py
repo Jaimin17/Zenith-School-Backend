@@ -19,6 +19,7 @@ def addSearchOption(query: Select, search: str):
 
     return query
 
+
 def getAllSubjectsIsDeleteFalse(session: Session, search: str = None, page: int = 1):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
@@ -32,6 +33,21 @@ def getAllSubjectsIsDeleteFalse(session: Session, search: str = None, page: int 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     active_subjects = session.exec(query).all()
     return active_subjects
+
+
+def findSubjectById(subjectId: uuid.UUID, session: Session):
+    query = (
+        select(Subject)
+        .where(Subject.id == subjectId, Subject.is_delete == False)
+    )
+
+    subject = session.exec(query).first()
+
+    if subject is None:
+        raise HTTPException(status_code=404, detail="No subject found with the provided ID.")
+
+    return subject
+
 
 def subjectSave(subject: SubjectSave, session: Session):
     query = (
@@ -75,7 +91,6 @@ def subjectSave(subject: SubjectSave, session: Session):
         session.rollback()
         raise HTTPException(status_code=400, detail="Subject already exists (unique constraint)")
 
-
     session.refresh(new_subject)
 
     return {
@@ -83,6 +98,7 @@ def subjectSave(subject: SubjectSave, session: Session):
         "message": "Subject created successfully",
         "lessons_affected": None
     }
+
 
 def SubjectUpdate(data: SubjectUpdateBase, session: Session):
     findSubjectQuery = (
@@ -142,6 +158,7 @@ def SubjectUpdate(data: SubjectUpdateBase, session: Session):
         "message": "Subject updated successfully",
         "lessons_affected": None
     }
+
 
 def SubjectSoftDelete_with_lesson(id: uuid.UUID, session: Session):
     findSubject = (

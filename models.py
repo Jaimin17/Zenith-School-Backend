@@ -70,6 +70,7 @@ class Parent(SQLModel, table=True):
 class Grade(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     level: int = Field(nullable=False, unique=True)
+    is_delete: bool = Field(default=False, nullable=False)
 
     students: List["Student"] = Relationship(back_populates="grade")
     classes: List["Class"] = Relationship(back_populates="grade")

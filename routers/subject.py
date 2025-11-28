@@ -4,17 +4,29 @@ from typing import List
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AdminUser
-from repository.subject import getAllSubjectsIsDeleteFalse, subjectSave, SubjectUpdate, SubjectSoftDelete_with_lesson
+from repository.subject import getAllSubjectsIsDeleteFalse, subjectSave, SubjectUpdate, SubjectSoftDelete_with_lesson, \
+    findSubjectById
 from schemas import SubjectRead, SubjectBase, SubjectSave, SubjectSaveResponse, SubjectUpdateBase
 
 router = APIRouter(
     prefix="/subject",
 )
 
+
 @router.get("/getAll", response_model=List[SubjectRead])
 def getAllSubject(current_user: AdminUser, session: SessionDep, search: str = None, page: int = 1):
     all_subjects = getAllSubjectsIsDeleteFalse(session, search, page)
     return all_subjects
+
+
+@router.get("/get/{subjectId}", response_model=SubjectRead)
+def getSubjectById(current_user: AdminUser, subjectId: uuid.UUID, session: SessionDep):
+    if subjectId is None:
+        raise HTTPException(status_code=400, detail="Subject ID is not present.")
+
+    result = findSubjectById(subjectId, session)
+    return result
+
 
 @router.post("/save", response_model=SubjectSaveResponse)
 def saveSubject(current_user: AdminUser, subject: SubjectSave, session: SessionDep):
@@ -41,6 +53,7 @@ def updateSubject(current_user: AdminUser, data: SubjectUpdateBase, session: Ses
 
     result = SubjectUpdate(data, session)
     return result
+
 
 @router.delete("/delete", response_model=SubjectSaveResponse)
 def softDeleteSubject(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
