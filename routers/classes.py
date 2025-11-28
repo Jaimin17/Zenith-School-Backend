@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, TeacherOrAdminUser, AdminUser
 from repository.classes import getAllClassesIsDeleteFalse, getAllClassOfTeacherAndIsDeleteFalse, findClassById, \
     classSave, ClassUpdate, ClassSoftDeleteWithLessonsStudentsEventsAnnoucements
-from schemas import ClassRead, ClassSaveResponse, ClassSave, ClassUpdateBase, ClassDeleteResponse
+from schemas import ClassRead, SaveResponse, ClassSave, ClassUpdateBase, ClassDeleteResponse
 
 router = APIRouter(
     prefix="/classes",
@@ -38,7 +38,7 @@ def getClassById(classId: uuid.UUID, current_user: CurrentUser, session: Session
     return result
 
 
-@router.post("/save", response_model=ClassSaveResponse)
+@router.post("/save", response_model=SaveResponse)
 def saveClass(current_user: AdminUser, classes: ClassSave, session: SessionDep):
     if not classes.name or len(classes.name.strip()) < 1:
         raise HTTPException(
@@ -62,7 +62,7 @@ def saveClass(current_user: AdminUser, classes: ClassSave, session: SessionDep):
     return result
 
 
-@router.put("/update", response_model=ClassSaveResponse)
+@router.put("/update", response_model=SaveResponse)
 def updateClass(current_user: AdminUser, classes: ClassUpdateBase, session: SessionDep):
     if not classes.id:
         raise HTTPException(

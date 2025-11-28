@@ -16,6 +16,7 @@ class UserBase(BaseModel):
     is_active: bool
     is_superuser: bool
 
+
 class RegisterUser(SQLModel):
     username: str
     firstName: str
@@ -23,22 +24,25 @@ class RegisterUser(SQLModel):
     email: EmailStr
     password: str
 
+
 class UserPublic(SQLModel):
     id: uuid.UUID
+
 
 class Token(SQLModel):
     access_token: str
     refresh_token: str
     token_type: str
 
+
 class RefreshTokenRequest(SQLModel):
     refresh_token: str
 
 
 class TokenPayload(SQLModel):
-    sub: str # username
-    role: str # role
-    user_id: str # id
+    sub: str  # username
+    role: str  # role
+    user_id: str  # id
     exp: int | None = None
 
 
@@ -147,14 +151,15 @@ class AttendanceBase(SQLModel):
 
 
 # ===================== Read Schemas (with relations) =====================
+class SaveResponse(SQLModel):
+    id: str
+    message: str
+
 
 class ClassRead(ClassBase):
     supervisor: Optional[TeacherBase] = None
     grade: Optional[GradeBase] = None
 
-class ClassSaveResponse(SQLModel):
-    id: str
-    message: str
 
 class ClassSave(SQLModel):
     name: str
@@ -162,8 +167,10 @@ class ClassSave(SQLModel):
     supervisorId: Optional[uuid.UUID] = None
     gradeId: uuid.UUID
 
+
 class ClassUpdateBase(ClassSave):
     id: uuid.UUID
+
 
 class ClassDeleteResponse(SQLModel):
     id: str
@@ -177,6 +184,23 @@ class ClassDeleteResponse(SQLModel):
 class TeacherRead(TeacherBase):
     subjects: List[SubjectBase] = []
     classes: List[ClassBase] = []
+
+
+class TeacherSave(SQLModel):
+    username: str
+    first_name: str
+    last_name: str
+    email: EmailStr
+    phone: str
+    address: str
+    img: Optional[str] = None
+    blood_type: str
+    sex: UserSex
+    subjects: List[uuid.UUID]
+
+
+class TeacherUpdateBase(TeacherSave):
+    id: uuid.UUID
 
 
 class ParentRead(ParentBase):
