@@ -6,8 +6,8 @@ from deps import CurrentUser, TeacherOrAdminUser, AdminUser
 from core.database import SessionDep
 from models import UserSex
 from repository.teacher import getAllTeachersIsDeleteFalse, getAllTeachersOfClassAndIsDeleteFalse, countTeacher, \
-    findTeacherById, teacherSave
-from schemas import TeacherRead, SaveResponse, TeacherSave, TeacherUpdateBase
+    findTeacherById, teacherSave, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject
+from schemas import TeacherRead, SaveResponse, TeacherSave, TeacherUpdateBase, TeacherDeleteResponse
 
 router = APIRouter(
     prefix="/teacher",
@@ -149,4 +149,16 @@ def updateTeacher(current_user: AdminUser, teacher: TeacherUpdateBase, session: 
         )
 
     result = TeacherUpdate(teacher, session)
+    return result
+
+
+@router.delete("/delete", response_model=TeacherDeleteResponse)
+def softDeleteTeacher(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
+    if id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Teacher ID is required for deleting."
+        )
+
+    result = teacherSoftDeleteWithLessonAndClassAndSubject(id, session)
     return result

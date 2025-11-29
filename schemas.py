@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import List, Optional
 
 from pydantic import EmailStr, BaseModel
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, Field
 
 from models import UserSex, Day
 
@@ -152,8 +152,17 @@ class AttendanceBase(SQLModel):
 
 # ===================== Read Schemas (with relations) =====================
 class SaveResponse(SQLModel):
-    id: str
-    message: str
+    id: str = Field(..., description="Resource id (stringified UUID)")
+    message: str = Field(..., description="Human-friendly status message")
+
+    class Config:
+        from_attributes = True
+        json_schema_extra = {
+            "example": {
+                "id": "c9b1d6b8-1f2b-4f3a-9f4b-1234567890ab",
+                "message": "Saved successfully"
+            }
+        }
 
 
 class ClassRead(ClassBase):
@@ -203,6 +212,32 @@ class TeacherUpdateBase(TeacherSave):
     id: uuid.UUID
 
 
+class TeacherDeleteResponse(SaveResponse):
+    subject_affected: Optional[int] = Field(
+        default=None,
+        description="Number of subjects linked to this teacher"
+    )
+    lesson_affected: Optional[int] = Field(
+        default=None,
+        description="Number of lessons affected when modifying/deleting the teacher"
+    )
+    class_affected: Optional[int] = Field(
+        default=None,
+        description="Number of classes impacted (where teacher was supervisor)"
+    )
+
+    class Config(SaveResponse.Config):
+        json_schema_extra = {
+            "example": {
+                "id": "c9b1d6b8-1f2b-4f3a-9f4b-1234567890ab",
+                "message": "Teacher created successfully",
+                "subject_affected": 3,
+                "lesson_affected": 0,
+                "class_affected": 1
+            }
+        }
+
+
 class ParentRead(ParentBase):
     students: List[StudentBase] = []
 
@@ -228,9 +263,7 @@ class SubjectSave(SQLModel):
     teachersList: List[uuid.UUID]
 
 
-class SubjectSaveResponse(SQLModel):
-    id: str
-    message: str
+class SubjectSaveResponse(SaveResponse):
     lessons_affected: int | None
 
 
