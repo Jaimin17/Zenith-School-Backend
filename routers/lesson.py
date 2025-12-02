@@ -4,12 +4,13 @@ from core.database import SessionDep
 from fastapi import APIRouter
 from deps import CurrentUser, AllUser
 from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIsDeleteFalse, \
-    getAllLessonOfClassIsDeleteFalse, getAllLessonOfParentIsDeleteFalse
+    getAllLessonOfClassIsDeleteFalse, getAllLessonOfParentIsDeleteFalse, countAllLessonOfTeacher
 from schemas import LessonRead
 
 router = APIRouter(
     prefix="/lesson",
 )
+
 
 @router.get("/getAll", response_model=List[LessonRead])
 def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
@@ -24,12 +25,22 @@ def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None,
         all_lessons = getAllLessonOfParentIsDeleteFalse(user.id, session, search, page)
     return all_lessons
 
+
 @router.get("/teacher/{teacherId}", response_model=List[LessonRead])
-def getAllLessonOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllLessonOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
+                          page: int = 1):
     all_lessons = getAllLessonOfTeacherIsDeleteFalse(teacherId, session, search, page)
     return all_lessons
 
+
+@router.get("/countByTeacher/{teacherId}", response_model=int)
+def countLessonByTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep):
+    total_lessons = countAllLessonOfTeacher(teacherId, session)
+    return total_lessons
+
+
 @router.get("/class/{classId}", response_model=List[LessonRead])
-def getAllLessonOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllLessonOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
+                        page: int = 1):
     all_lessons = getAllLessonOfClassIsDeleteFalse(classId, session, search, page)
     return all_lessons

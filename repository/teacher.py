@@ -144,6 +144,7 @@ def teacherSave(teacher: TeacherSave, session: Session):
         img=teacher.img,
         blood_type=teacher.blood_type,
         sex=teacher.sex,
+        dob=teacher.dob,
         is_delete=False,
         password="user@123"  # or generate one, depending on your logic
     )
@@ -238,6 +239,7 @@ def TeacherUpdate(teacher: TeacherUpdateBase, session: Session):
     currentTeacher.img = teacher.img
     currentTeacher.blood_type = teacher.blood_type
     currentTeacher.sex = teacher.sex
+    currentTeacher.dob = teacher.dob
     currentTeacher.subjects = subjects
 
     session.add(currentTeacher)

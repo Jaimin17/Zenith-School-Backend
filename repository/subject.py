@@ -6,7 +6,7 @@ from sqlalchemy import Select, func
 from sqlmodel import Session, select, insert
 
 from core.config import settings
-from models import Subject, Teacher, Lesson
+from models import Subject, Teacher, Lesson, TeacherSubjectLink
 from schemas import SubjectSave, SubjectBase, SubjectUpdateBase
 
 
@@ -47,6 +47,18 @@ def findSubjectById(subjectId: uuid.UUID, session: Session):
         raise HTTPException(status_code=404, detail="No subject found with the provided ID.")
 
     return subject
+
+
+def countSubjectForTeacher(teacherId: uuid.UUID, session: Session):
+    query = (
+        select(func.count(TeacherSubjectLink.subject_id))
+        .select_from(Teacher)
+        .join(TeacherSubjectLink, Teacher.id == TeacherSubjectLink.teacher_id)
+        .where(Teacher.id == teacherId, Teacher.is_delete == False)
+    )
+
+    result = session.exec(query).one()
+    return result
 
 
 def subjectSave(subject: SubjectSave, session: Session):

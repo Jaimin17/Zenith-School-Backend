@@ -4,9 +4,9 @@ from routers import (authentication, user, teacher, student, parent, subject, cl
                      assignments, results, events, announcements, admin, attendance)
 
 api_router = APIRouter()
+# api_router.include_router(user.router, tags=["user"])
 api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(authentication.router, tags=["authentication"])
-api_router.include_router(user.router, tags=["user"])
 api_router.include_router(teacher.router, tags=["teacher"])
 api_router.include_router(student.router, tags=["student"])
 api_router.include_router(parent.router, tags=["parent"])

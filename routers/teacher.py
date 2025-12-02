@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from typing import List
 
 from fastapi import APIRouter, HTTPException
@@ -76,6 +77,12 @@ def saveTeacher(teacher: TeacherSave, current_user: AdminUser, session: SessionD
             detail="Blood type is required."
         )
 
+    if not teacher.dob or not isinstance(teacher.dob, date):
+        raise HTTPException(
+            status_code=400,
+            detail="Date of Birth is required."
+        )
+
     if not isinstance(teacher.sex, UserSex):
         raise HTTPException(
             status_code=400,
@@ -134,6 +141,12 @@ def updateTeacher(current_user: AdminUser, teacher: TeacherUpdateBase, session: 
         raise HTTPException(
             status_code=400,
             detail="Blood type is required."
+        )
+
+    if not teacher.dob or not isinstance(teacher.dob, date):
+        raise HTTPException(
+            status_code=400,
+            detail="Date of Birth is required."
         )
 
     if not isinstance(teacher.sex, UserSex):

@@ -95,6 +95,7 @@ class StudentBase(SQLModel):
     img: Optional[str] = None
     blood_type: str
     sex: UserSex
+    dob: date
 
 
 class TeacherBase(SQLModel):
@@ -108,6 +109,7 @@ class TeacherBase(SQLModel):
     img: Optional[str] = None
     blood_type: str
     sex: UserSex
+    dob: date
 
 
 class EventBase(SQLModel):
@@ -205,6 +207,7 @@ class TeacherSave(SQLModel):
     img: Optional[str] = None
     blood_type: str
     sex: UserSex
+    dob: date
     subjects: List[uuid.UUID]
 
 

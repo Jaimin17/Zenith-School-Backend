@@ -34,6 +34,17 @@ def getAllClassesIsDeleteFalse(session: Session, search: str, page: int):
     return all_classes
 
 
+def countAllClassOfTheTeacher(teacherId: uuid.UUID, session: Session):
+    query = (
+        select(func.count())
+        .select_from(Class)
+        .where(Class.supervisor_id == teacherId, Class.is_delete == False)
+    )
+
+    total_classes = session.exec(query).one()
+    return total_classes
+
+
 def getAllClassOfTeacherAndIsDeleteFalse(supervisorId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 

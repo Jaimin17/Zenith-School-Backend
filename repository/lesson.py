@@ -18,11 +18,12 @@ def addSearchOption(query: Select, search: str):
                     func.lower(Teacher.last_name).like(search_pattern)
             ) |
             (
-                    func.lower(Class.name).like(search_pattern)
+                func.lower(Class.name).like(search_pattern)
             )
         )
 
     return query
+
 
 def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
@@ -38,6 +39,7 @@ def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_lessons = session.exec(query).unique().all()
     return all_lessons
+
 
 def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
@@ -55,6 +57,18 @@ def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, s
     all_lessons = session.exec(query).unique().all()
     return all_lessons
 
+
+def countAllLessonOfTeacher(teacherId: uuid.UUID, session: Session):
+    query = (
+        select(func.count())
+        .select_from(Lesson)
+        .where(Lesson.teacher_id == teacherId, Lesson.is_delete == False)
+    )
+
+    total_lessons = session.exec(query).one()
+    return total_lessons
+
+
 def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
@@ -71,6 +85,7 @@ def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, searc
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_lessons = session.exec(query).unique().all()
     return all_lessons
+
 
 def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE

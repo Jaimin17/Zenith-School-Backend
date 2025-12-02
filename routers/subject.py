@@ -3,9 +3,9 @@ from token import STRING
 from typing import List
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
-from deps import CurrentUser, AdminUser
+from deps import CurrentUser, AdminUser, TeacherOrAdminUser
 from repository.subject import getAllSubjectsIsDeleteFalse, subjectSave, SubjectUpdate, SubjectSoftDelete_with_lesson, \
-    findSubjectById
+    findSubjectById, countSubjectForTeacher
 from schemas import SubjectRead, SubjectBase, SubjectSave, SubjectSaveResponse, SubjectUpdateBase
 
 router = APIRouter(
@@ -26,6 +26,12 @@ def getSubjectById(current_user: AdminUser, subjectId: uuid.UUID, session: Sessi
 
     result = findSubjectById(subjectId, session)
     return result
+
+
+@router.get("/countByTeacher/{teacherId}", response_model=int)
+def subjectCountForTeacher(current_user: TeacherOrAdminUser, teacherId: uuid.UUID, session: SessionDep):
+    totalSubjects = countSubjectForTeacher(teacherId, session)
+    return totalSubjects
 
 
 @router.post("/save", response_model=SubjectSaveResponse)
