@@ -261,6 +261,26 @@ class StudentRead(StudentBase):
     grade: Optional[GradeBase] = None
 
 
+class StudentSave(SQLModel):
+    username: str
+    first_name: str
+    last_name: str
+    email: EmailStr
+    phone: str
+    address: str
+    img: Optional[str] = None
+    blood_type: str
+    sex: UserSex
+    dob: date
+    parent_id: uuid.UUID
+    class_id: uuid.UUID
+    grade_id: uuid.UUID
+
+
+class StudentUpdateBase(StudentSave):
+    id: uuid.UUID
+
+
 class SubjectSave(SQLModel):
     name: str
     teachersList: List[uuid.UUID]
