@@ -2,10 +2,11 @@ import uuid
 from typing import List
 from core.database import SessionDep
 from fastapi import APIRouter
-from deps import CurrentUser, AllUser
+from deps import CurrentUser, AllUser, StudentOrTeacherOrAdminUser
 from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIsDeleteFalse, \
-    getAllLessonOfClassIsDeleteFalse, getAllLessonOfParentIsDeleteFalse, countAllLessonOfTeacher
-from schemas import LessonRead
+    getAllLessonOfClassIsDeleteFalse, getAllLessonOfParentIsDeleteFalse, countAllLessonOfTeacher, \
+    countAllLessonOfStudent
+from schemas import LessonRead, StudentRead
 
 router = APIRouter(
     prefix="/lesson",
@@ -37,6 +38,12 @@ def getAllLessonOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, sessi
 def countLessonByTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep):
     total_lessons = countAllLessonOfTeacher(teacherId, session)
     return total_lessons
+
+
+@router.get("/countByStudent/{studentId}", response_model=int)
+def countLessonByStudent(studentId: uuid.UUID, current_user: StudentOrTeacherOrAdminUser, session: SessionDep):
+    total_lesson = countAllLessonOfStudent(studentId, session)
+    return total_lesson
 
 
 @router.get("/class/{classId}", response_model=List[LessonRead])

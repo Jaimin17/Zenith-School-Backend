@@ -24,6 +24,16 @@ def countStudent(session: Session):
     ).first()
 
 
+def getStudentByIdAndIsDeleteFalse(studentId: uuid.UUID, session: Session):
+    query = (
+        select(Student)
+        .where(Student.id == studentId, Student.is_delete == False)
+    )
+
+    studentDetail = session.exec(query).first()
+    return studentDetail
+
+
 def countStudentBySexAll(session: Session):
     query = (
         select(Student.sex, func.count())
@@ -49,6 +59,7 @@ def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int):
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     active_students = session.exec(query).all()
     return active_students
+
 
 def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UUID, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE

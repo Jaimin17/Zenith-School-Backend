@@ -69,6 +69,19 @@ def countAllLessonOfTeacher(teacherId: uuid.UUID, session: Session):
     return total_lessons
 
 
+def countAllLessonOfStudent(studentId: uuid.UUID, session: Session):
+    query = (
+        select(func.count())
+        .select_from(Lesson)
+        .join(Class, onclause=(Class.id == Lesson.class_id))
+        .join(Student, onclause=(Student.class_id == Class.id))
+        .where(Student.id == studentId, Lesson.is_delete == False)
+    )
+
+    total_lessons = session.exec(query).one()
+    return total_lessons
+
+
 def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
