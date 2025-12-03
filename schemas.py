@@ -356,9 +356,13 @@ class ResultRead(ResultBase):
 
 class ResultSave(SQLModel):
     score: float = 0
-    exam_id: Optional[uuid.UUID]
-    assignment_id: Optional[uuid.UUID]
+    exam_id: Optional[uuid.UUID] | None
+    assignment_id: Optional[uuid.UUID] | None
     student_id: uuid.UUID
+
+
+class ResultUpdate(ResultSave):
+    id: uuid.UUID
 
 
 class AttendanceRead(AttendanceBase):
