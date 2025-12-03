@@ -1,12 +1,12 @@
 import uuid
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import HTTPException
 from psycopg import IntegrityError
 from sqlmodel import Session, select, or_
 from sqlalchemy import func, Select
 from core.config import settings
-from models import Student, Teacher, Lesson, Class, Parent, Grade
+from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance
 from repository.teacher import PHONE_RE
 from schemas import StudentSave, StudentUpdateBase
 
@@ -286,6 +286,36 @@ def studentSoftDelete(id: uuid.UUID, session: Session):
     if currentStudent is None:
         raise HTTPException(status_code=404, detail="No student found with the provided ID.")
 
+    parent_removed = 1 if currentStudent.parent_id is not None else 0
+    class_removed = 1 if currentStudent.class_id is not None else 0
+    grade_removed = 1 if currentStudent.grade_id is not None else 0
+
+    currentStudent.parent_id = None
+    currentStudent.class_id = None
+    currentStudent.grade_id = None
+
+    attendance_query = (
+        select(Attendance)
+        .where(Attendance.student_id == id, Attendance.is_delete == False)
+    )
+    attendances: List[Attendance] = session.exec(attendance_query).all()
+    attendance_count = 0
+    for attendance in attendances:
+        attendance.is_delete = True
+        session.add(attendance)
+        attendance_count += 1
+
+    result_query = (
+        select(Result)
+        .where(Result.student_id == id, Result.is_delete == False)
+    )
+    results: List[Result] = session.exec(result_query).all()
+    result_count = 0
+    for result in results:
+        result.is_delete = True
+        session.add(result)
+        result_count += 1
+
     # Soft delete the student
     currentStudent.is_delete = True
     session.add(currentStudent)
@@ -301,5 +331,10 @@ def studentSoftDelete(id: uuid.UUID, session: Session):
 
     return {
         "id": str(currentStudent.id),
-        "message": "Student soft-deleted successfully."
+        "message": "Student soft-deleted successfully.",
+        "parent_removed": parent_removed,
+        "class_removed": class_removed,
+        "grade_removed": grade_removed,
+        "attendance_affected": attendance_count,
+        "result_affected": result_count
     }

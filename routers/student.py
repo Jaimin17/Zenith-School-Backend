@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser
 from core.database import SessionDep
 from models import UserSex
-from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase
+from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, StudentDeleteResponse
 from repository.student import getAllStudentsIsDeleteFalse, getAllStudentsOfTeacherAndIsDeleteFalse, countStudent, \
     countStudentBySexAll, getStudentByIdAndIsDeleteFalse, studentSave, StudentUpdate, studentSoftDelete
 
@@ -201,7 +201,7 @@ def updateStudent(current_user: AdminUser, student: StudentUpdateBase, session: 
     return result
 
 
-@router.delete("/delete", response_model=SaveResponse)
+@router.delete("/delete", response_model=StudentDeleteResponse)
 def softDeleteStudent(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
     if id is None:
         raise HTTPException(

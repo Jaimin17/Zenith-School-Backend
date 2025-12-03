@@ -281,6 +281,14 @@ class StudentUpdateBase(StudentSave):
     id: uuid.UUID
 
 
+class StudentDeleteResponse(SaveResponse):
+    parent_removed: int = 0
+    class_removed: int = 0
+    grade_removed: int = 0
+    attendance_affected: int = 0
+    result_affected: int = 0
+
+
 class SubjectSave(SQLModel):
     name: str
     teachersList: List[uuid.UUID]
@@ -306,14 +314,51 @@ class ExamRead(ExamBase):
     lesson: Optional[LessonRead] = None
 
 
+class ExamSave(SQLModel):
+    title: str
+    start_time: datetime
+    end_time: datetime
+    lesson_id: uuid.UUID
+
+
+class ExamUpdate(ExamSave):
+    id: uuid.UUID
+
+
+class ExamDeleteResponse(SaveResponse):
+    result_affected: int = 0
+
+
 class AssignmentRead(AssignmentBase):
     lesson: Optional[LessonRead] = None
+
+
+class AssignmentSave(SQLModel):
+    title: str
+    start_date: date
+    end_date: date
+    lesson_id: uuid.UUID
+
+
+class AssignmentUpdate(AssignmentSave):
+    id: uuid.UUID
+
+
+class AssignmentDeleteResponse(SaveResponse):
+    result_affected: int = 0
 
 
 class ResultRead(ResultBase):
     exam: Optional[ExamRead] = None
     assignment: Optional[AssignmentRead] = None
     student: Optional[StudentBase] = None
+
+
+class ResultSave(SQLModel):
+    score: float = 0
+    exam_id: Optional[uuid.UUID]
+    assignment_id: Optional[uuid.UUID]
+    student_id: uuid.UUID
 
 
 class AttendanceRead(AttendanceBase):

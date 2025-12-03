@@ -1,11 +1,11 @@
 import uuid
 from typing import List
 from core.database import SessionDep
-from fastapi import APIRouter
-from deps import CurrentUser, AllUser
+from fastapi import APIRouter, HTTPException
+from deps import CurrentUser, AllUser, TeacherOrAdminUser
 from repository.results import getAllResultsIsDeleteFalse, getAllResultsByTeacherIsDeleteFalse, \
     getAllResultsOfClassIsDeleteFalse, getAllResultsOfStudentIsDeleteFalse, getAllResultsOfParentIsDeleteFalse
-from schemas import ResultRead
+from schemas import ResultRead, SaveResponse, ResultSave
 
 router = APIRouter(
     prefix="/results",
@@ -38,3 +38,17 @@ def getAllResultsOfClass(classId: uuid.UUID, current_user: CurrentUser, session:
 def getAllResultsOfStudent(studentId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None, page: int = 1):
     all_results = getAllResultsOfStudentIsDeleteFalse(studentId, session, search, page)
     return all_results
+
+# @router.get("/save", response_model=SaveResponse)
+# def saveResult(result: ResultSave, current_user: TeacherOrAdminUser, session: SessionDep):
+#     user, role = current_user
+#
+#     if result.score is None or result.score < 0 or result.score > 650:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="Score is not present. Should be not be negative."
+#         )
+#
+#     if (
+#             result.exam_id is None or not isinstance(result.exam_id, uuid.UUID)) and (result.assignment_id is None or not isinstance(result.exam_id, uuid.UUID)
+#        )

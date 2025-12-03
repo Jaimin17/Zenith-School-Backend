@@ -34,7 +34,6 @@ class Admin(SQLModel, table=True):
     is_delete: bool = Field(default=False, nullable=False)
 
 
-
 # ===================== Enums =====================
 class UserSex(str, Enum):
     MALE = "male"
@@ -135,7 +134,6 @@ class Announcement(SQLModel, table=True):
     description: str = Field(nullable=False)
     announcement_date: date = Field(default_factory=date.today, nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
-
 
     class_id: Optional[uuid.UUID] = Field(default=None, foreign_key="class.id")
     related_class: Optional["Class"] = Relationship(back_populates="announcements")
@@ -255,14 +253,15 @@ class Result(SQLModel, table=True):
     assignment_id: Optional[uuid.UUID] = Field(default=None, foreign_key="assignment.id")
     assignment: Optional["Assignment"] = Relationship(back_populates="results")
 
-    student_id: Optional[uuid.UUID] = Field(default=None, foreign_key="student.id")
-    student: Optional["Student"] = Relationship(back_populates="results")
+    student_id: uuid.UUID = Field(nullable=False, foreign_key="student.id")
+    student: Student = Relationship(back_populates="results")
 
 
 class Attendance(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     attendance_date: datetime = Field(default_factory=datetime.now, nullable=False)
     present: bool = Field(default=False, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
 
     student_id: Optional[uuid.UUID] = Field(default=None, foreign_key="student.id")
     student: Optional["Student"] = Relationship(back_populates="attendances")
