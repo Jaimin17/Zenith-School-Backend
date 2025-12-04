@@ -306,9 +306,31 @@ class EventRead(EventBase):
     related_class: Optional[ClassBase] = None
 
 
+class EventSave(SQLModel):
+    title: str
+    description: str
+    start_time: datetime
+    end_time: datetime
+    class_id: Optional[uuid.UUID] = None
+
+
+class EventUpdate(EventSave):
+    id: uuid.UUID
+
+
 class AnnouncementRead(AnnouncementBase):
     related_class: Optional[ClassBase] = None
 
+
+class AnnouncementSave(SQLModel):
+    title: str
+    description: str
+    announcement_date: Optional[date]
+    class_id: Optional[uuid.UUID]
+
+
+class AnnouncementUpdate(AnnouncementSave):
+    id: uuid.UUID
 
 class ExamRead(ExamBase):
     lesson: Optional[LessonRead] = None
