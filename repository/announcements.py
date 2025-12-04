@@ -182,7 +182,7 @@ def announcementUpdate(announcement: AnnouncementUpdate, session: Session):
     )
 
     current_announcement: Optional[Announcement] = session.exec(announcement_query).first()
-
+    print(f"This is announcement obj: {current_announcement}")
     if not current_announcement:
         raise HTTPException(
             status_code=404,

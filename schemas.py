@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, date
 from typing import List, Optional
 
-from pydantic import EmailStr, BaseModel
+from pydantic import EmailStr, BaseModel, field_validator
 from sqlmodel import SQLModel, Field
 
 from models import UserSex, Day
@@ -332,6 +332,7 @@ class AnnouncementSave(SQLModel):
 class AnnouncementUpdate(AnnouncementSave):
     id: uuid.UUID
 
+
 class ExamRead(ExamBase):
     lesson: Optional[LessonRead] = None
 
@@ -390,3 +391,55 @@ class ResultUpdate(ResultSave):
 class AttendanceRead(AttendanceBase):
     student: Optional[StudentBase] = None
     lesson: Optional[LessonBase] = None
+
+
+class AttendanceRecord(SQLModel):
+    student_id: uuid.UUID
+    present: bool = False
+
+
+class AttendanceBulkSave(SQLModel):
+    lesson_id: uuid.UUID
+    attendance_date: date
+    attendances: List[AttendanceRecord]
+
+    @field_validator('attendances')
+    def validate_attendances_not_empty(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError("At least one attendance record is required.")
+        return v
+
+
+class AttendanceSave(AttendanceRecord):
+    lesson_id: uuid.UUID
+    attendance_date: date
+
+
+class AttendanceUpdate(SQLModel):
+    id: uuid.UUID
+    present: bool
+
+
+class AttendanceSaveResponse(SQLModel):
+    id: str
+    message: str
+
+
+class AttendanceBulkSaveResponse(SQLModel):
+    message: str
+    total_saved: int
+    failed: List[dict] = []
+
+class AttendanceDetail(SQLModel):
+    id: uuid.UUID
+    student_id: uuid.UUID
+    student_name: str
+    lesson_id: uuid.UUID
+    lesson_name: str
+    attendance_date: date
+    present: bool
+    is_delete: bool
+
+class AttendanceListResponse(SQLModel):
+    attendances: List[AttendanceDetail]
+    total: int
