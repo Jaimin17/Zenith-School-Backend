@@ -331,7 +331,7 @@ def studentSoftDelete(id: uuid.UUID, session: Session):
 
     return {
         "id": str(currentStudent.id),
-        "message": "Student soft-deleted successfully.",
+        "message": "Student deleted successfully.",
         "parent_removed": parent_removed,
         "class_removed": class_removed,
         "grade_removed": grade_removed,

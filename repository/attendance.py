@@ -17,6 +17,7 @@ def attendanceOfWeek(session: Session, monday: datetime, sunday: datetime):
         .where(
             Attendance.attendance_date >= monday,
             Attendance.attendance_date <= sunday,
+            Attendance.is_delete == False
         )
     )
 
@@ -27,7 +28,8 @@ def attendanceOfWeek(session: Session, monday: datetime, sunday: datetime):
 def attendanceOfStudentOfCurrentYear(studentId: uuid.UUID, startDate: date, session: Session):
     query = (
         select(Attendance)
-        .where(Attendance.attendance_date >= startDate, Attendance.student_id == studentId)
+        .where(Attendance.attendance_date >= startDate, Attendance.student_id == studentId,
+               Attendance.is_delete == False)
     )
 
     attendance = session.exec(query).all()
@@ -324,7 +326,9 @@ def attendanceSoftDelete(id: uuid.UUID, userId: uuid.UUID, role: str, session: S
         "message": "Attendance deleted successfully."
     }
 
-def getAttendanceByLesson(lesson_id: uuid.UUID, attendance_date: Optional[date], userId: uuid.UUID, role: str, session: Session):
+
+def getAttendanceByLesson(lesson_id: uuid.UUID, attendance_date: Optional[date], userId: uuid.UUID, role: str,
+                          session: Session):
     lesson_query = select(Lesson).where(
         Lesson.id == lesson_id,
         Lesson.is_delete == False

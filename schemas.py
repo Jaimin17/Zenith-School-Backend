@@ -388,6 +388,19 @@ class ResultUpdate(ResultSave):
     id: uuid.UUID
 
 
+class ParentSave(SQLModel):
+    username: str
+    first_name: str
+    last_name: str
+    email: EmailStr
+    phone: str
+    address: str
+
+
+class ParentUpdate(ParentSave):
+    id: uuid.UUID
+
+
 class AttendanceRead(AttendanceBase):
     student: Optional[StudentBase] = None
     lesson: Optional[LessonBase] = None
@@ -430,6 +443,7 @@ class AttendanceBulkSaveResponse(SQLModel):
     total_saved: int
     failed: List[dict] = []
 
+
 class AttendanceDetail(SQLModel):
     id: uuid.UUID
     student_id: uuid.UUID
@@ -439,6 +453,7 @@ class AttendanceDetail(SQLModel):
     attendance_date: date
     present: bool
     is_delete: bool
+
 
 class AttendanceListResponse(SQLModel):
     attendances: List[AttendanceDetail]

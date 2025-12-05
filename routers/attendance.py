@@ -68,8 +68,10 @@ def deleteAttendance(id: uuid.UUID, current_user: TeacherOrAdminUser, session: S
     result = attendanceSoftDelete(id, user.id, role, session)
     return result
 
+
 @router.get("/lesson/{lesson_id}", response_model=AttendanceListResponse)
-def getAttendanceForLesson(lesson_id: uuid.UUID, current_user: TeacherOrAdminUser, session: SessionDep, attendance_date: Optional[date] = Query(None, description="Filter by specific date")):
+def getAttendanceForLesson(lesson_id: uuid.UUID, current_user: TeacherOrAdminUser, session: SessionDep,
+                           attendance_date: Optional[date] = Query(None, description="Filter by specific date")):
     user, role = current_user
     result = getAttendanceByLesson(lesson_id, attendance_date, user.id, role, session)
     return result
