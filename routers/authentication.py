@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, date, datetime
 from enum import Enum
 from typing import Any, Union
 
@@ -11,11 +11,24 @@ from sqlmodel import Session, select
 from core.database import SessionDep
 from core.security import verify_password, create_access_token, create_refresh_token, decode_refresh_token, secureLogout
 from models import User, Admin, Teacher, Parent, Student, BlacklistToken
-from schemas import Token, UserPublic, RefreshTokenRequest
+from schemas import Token, UserPublic, RefreshTokenRequest, TokenWithUser, AdminResponse, ParentResponse, \
+    TeacherResponse, StudentResponse
 
 router = APIRouter(
     prefix="/auth"
 )
+
+
+def format_user_response(user: Union[Admin, Teacher, Parent, Student], role: str) -> dict:
+    if role == "admin":
+        return AdminResponse.model_validate(user).model_dump(mode='json')
+    elif role == "parent":
+        return ParentResponse.model_validate(user).model_dump(mode='json')
+    elif role == "teacher":
+        return TeacherResponse.model_validate(user).model_dump(mode='json')
+    elif role == "student":
+        return StudentResponse.model_validate(user).model_dump(mode='json')
+    return {}
 
 
 def get_user_by_username(username: str, session: Session) -> tuple[Union[Admin, Teacher, Parent, Student], str] | None:
@@ -50,11 +63,10 @@ def get_user_by_username(username: str, session: Session) -> tuple[Union[Admin, 
     return None
 
 
-
-@router.post("/access-token", response_model=Token)
+@router.post("/access-token", response_model=TokenWithUser)
 def login_access_token(
-    session: SessionDep,
-    request: OAuth2PasswordRequestForm = Depends()
+        session: SessionDep,
+        request: OAuth2PasswordRequestForm = Depends()
 ):
     user_data = get_user_by_username(request.username, session)
 
@@ -78,12 +90,14 @@ def login_access_token(
     access_token = create_access_token(payload)
     refresh_token = create_refresh_token(payload)
 
-    print(f"refresh_token: {refresh_token}")
+    user_response = format_user_response(db_user, role)
 
-    return Token(
+    return TokenWithUser(
         access_token=access_token,
         refresh_token=refresh_token,
-        token_type="bearer"
+        token_type="bearer",
+        user=user_response,
+        role=role
     )
 
 
@@ -134,7 +148,6 @@ def logout(current_user: AllUser, token: TokenDep, request: RefreshTokenRequest,
         raise HTTPException(status_code=400, detail="Refresh token is required")
 
     return secureLogout(db_user.id, access_token, refresh_token, session)
-
 
 # @router.post("/test-token", response_model=UserPublic)
 # def test_token(current_user: CurrentUser) -> Any:

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, date
 from typing import List, Optional
 
-from pydantic import EmailStr, BaseModel, field_validator
+from pydantic import EmailStr, BaseModel, field_validator, ConfigDict
 from sqlmodel import SQLModel, Field
 
 from models import UserSex, Day
@@ -17,12 +17,59 @@ class UserBase(BaseModel):
     is_superuser: bool
 
 
+class userDetailBase(SQLModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    username: str
+    first_name: str
+    last_name: str
+    email: EmailStr
+    phone: Optional[str] = None
+    address: str
+    created_at: datetime
+
+
 class RegisterUser(SQLModel):
+    model_config = ConfigDict(from_attributes=True)
+
     username: str
     firstName: str
     lastName: str
     email: EmailStr
     password: str
+
+
+class AdminResponse(SQLModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    username: str
+
+
+class ParentResponse(userDetailBase):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TeacherResponse(userDetailBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    img: Optional[str] = None
+    blood_type: str
+    sex: str
+    dob: date
+
+
+class StudentResponse(userDetailBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    img: Optional[str] = None
+    blood_type: str
+    sex: str
+    dob: date
+    parent_id: Optional[uuid.UUID] = None
+    class_id: Optional[uuid.UUID] = None
+    grade_id: Optional[uuid.UUID] = None
 
 
 class UserPublic(SQLModel):
@@ -33,6 +80,14 @@ class Token(SQLModel):
     access_token: str
     refresh_token: str
     token_type: str
+
+
+class TokenWithUser(SQLModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+    user: dict  # Will contain the appropriate user response based on role
+    role: str
 
 
 class RefreshTokenRequest(SQLModel):
