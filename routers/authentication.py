@@ -1,5 +1,6 @@
 from datetime import timedelta, date, datetime
 from enum import Enum
+from math import dist
 from typing import Any, Union
 
 from jwt import PyJWTError
@@ -148,6 +149,17 @@ def logout(current_user: AllUser, token: TokenDep, request: RefreshTokenRequest,
         raise HTTPException(status_code=400, detail="Refresh token is required")
 
     return secureLogout(db_user.id, access_token, refresh_token, session)
+
+
+@router.get("/getUserDetail", response_model=dict)
+def getUserDetail(current_user: AllUser, session: SessionDep):
+    db_user, role = current_user
+
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_response = format_user_response(db_user, role)
+    return user_response
 
 # @router.post("/test-token", response_model=UserPublic)
 # def test_token(current_user: CurrentUser) -> Any:
