@@ -357,6 +357,27 @@ class LessonRead(LessonBase):
     teacher: Optional[TeacherBase] = None
 
 
+class LessonSave(SQLModel):
+    name: str
+    day: Day
+    start_time: datetime
+    end_time: datetime
+
+    subject_id: uuid.UUID
+    class_id: uuid.UUID
+    teacher_id: uuid.UUID
+
+
+class LessonUpdate(LessonSave):
+    id: uuid.UUID
+
+
+class LessonDeleteResponse(SaveResponse):
+    exam_affected: int = 0
+    assignment_affected: int = 0
+    attendance_affected: int = 0
+
+
 class EventRead(EventBase):
     related_class: Optional[ClassBase] = None
 
