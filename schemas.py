@@ -266,50 +266,6 @@ class TeacherSave(SQLModel):
     subjects: List[uuid.UUID]
 
 
-class TeacherCreateForm(BaseModel):
-    # Use Pydantic Field() for constraints and type validation
-    username: str = Field(min_length=3)
-    first_name: str = Field(min_length=1)
-    last_name: str = Field(min_length=1)
-    email: EmailStr # Automatic format validation
-    phone: str = Field(min_length=10, max_length=10) # Assuming 10 digits
-    address: str = Field(min_length=10)
-    blood_type: str = Field(min_length=1)
-    sex: str # Will be manually converted to UserSex in the endpoint
-    dob: date # Pydantic converts the "YYYY-MM-DD" string to a date object
-    subjects: List[uuid.UUID] # Pydantic converts the comma-separated string (or repeated fields) to a list of UUIDs
-
-    # Helper function to convert form data to Pydantic model
-    @classmethod
-    def as_form(
-        cls,
-        username: str = Form(...),
-        first_name: str = Form(...),
-        last_name: str = Form(...),
-        email: str = Form(...),
-        phone: str = Form(...),
-        address: str = Form(...),
-        blood_type: str = Form(...),
-        sex: str = Form(...),
-        dob: date = Form(...),
-        # NOTE: FastAPI/Pydantic can often parse a comma-separated string
-        # for a list of UUIDs, but sometimes requires repeated fields.
-        # Using List[uuid.UUID] helps the schema.
-        subjects: List[uuid.UUID] = Form(...),
-    ):
-        return cls(
-            username=username,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            phone=phone,
-            address=address,
-            blood_type=blood_type,
-            sex=sex,
-            dob=dob,
-            subjects=subjects
-        )
-
 class TeacherUpdateBase(TeacherSave):
     id: uuid.UUID
 

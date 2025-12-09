@@ -10,7 +10,7 @@ from core.database import SessionDep
 from models import UserSex
 from repository.teacher import getAllTeachersIsDeleteFalse, getAllTeachersOfClassAndIsDeleteFalse, countTeacher, \
     findTeacherById, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject, teacherSaveWithImage
-from schemas import TeacherRead, SaveResponse, TeacherSave, TeacherUpdateBase, TeacherDeleteResponse, TeacherCreateForm
+from schemas import TeacherRead, SaveResponse, TeacherSave, TeacherUpdateBase, TeacherDeleteResponse
 
 router = APIRouter(
     prefix="/teacher",
@@ -54,9 +54,43 @@ async def saveTeacher(
         blood_type: str = Form(...),
         sex: str = Form(...),
         dob: date = Form(...),  # Pydantic/FastAPI handles date conversion
-        subjects: List[uuid.UUID] = Form(...),
+        subjects: str = Form(...),
         img: Optional[UploadFile] = File(None)
 ):
+    try:
+        subject_ids = [
+            uuid.UUID(s.strip())
+            for s in subjects.split(',')
+            if s.strip()
+        ]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid subject UUID format: {str(e)}"
+        )
+
+        # Validate subjects list is not empty
+    if not subject_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one subject must be assigned to the teacher."
+        )
+
+    try:
+        sex_enum = UserSex(sex.lower())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid sex value. Must be 'male' or 'female'."
+        )
+
+        # Validate phone format
+    if not settings.PHONE_RE.match(phone.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Indian phone number. Must be 10 digits starting with 6-9."
+        )
+
     teacher_data = {
         "username": username,
         "first_name": first_name,
@@ -65,35 +99,10 @@ async def saveTeacher(
         "phone": phone,
         "address": address,
         "blood_type": blood_type,
-        "sex": sex,
+        "sex": sex_enum,
         "dob": dob,
-        "subjects": subjects
+        "subjects": subject_ids
     }
-
-    try:
-        sex_enum = UserSex(teacher_data["sex"].lower())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid sex value. Must be 'male' or 'female'.")
-
-    if not settings.PHONE_RE.match(teacher_data["phone"].strip()):
-        raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
-
-    if not teacher_data["subjects"]:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one subject must be assigned to the teacher."
-        )
-
-    if not settings.PHONE_RE.match(teacher_data["phone"].strip()):
-        raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
-
-    if not teacher_data["subjects"]:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one subject must be assigned to the teacher."
-        )
-
-    teacher_data["sex"] = sex_enum
 
     result = await teacherSaveWithImage(teacher_data, img, session)
     return result

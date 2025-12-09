@@ -11,7 +11,7 @@ import os
 from core.FileStorage import process_and_save_image
 from core.config import settings
 from models import Teacher, Lesson, Subject, Class
-from schemas import TeacherSave, TeacherUpdateBase, TeacherCreateForm
+from schemas import TeacherSave, TeacherUpdateBase
 
 
 def addSearchOption(query: Select, search: str):
@@ -87,9 +87,6 @@ async def teacherSaveWithImage(teacher_data: dict, img: Optional[UploadFile], se
     email = teacher_data["email"].strip().lower()
     phone = teacher_data["phone"].strip()
 
-    if not settings.PHONE_RE.match(phone):
-        raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
-
     if not settings.EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="Invalid Email address.")
 
@@ -130,13 +127,15 @@ async def teacherSaveWithImage(teacher_data: dict, img: Optional[UploadFile], se
         if missing:
             raise HTTPException(
                 status_code=404,
-                detail=f"No subject(s) found with ID(s): {', '.join(missing)}"
+                detail=f"Subject(s) not found with ID(s): {', '.join(missing)}"
             )
 
     image_filename = None
     if img and img.filename:
         try:
-            image_filename = await process_and_save_image(img, "parents", username)
+            image_filename = await process_and_save_image(img, "teachers", username)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
 
@@ -167,7 +166,7 @@ async def teacherSaveWithImage(teacher_data: dict, img: Optional[UploadFile], se
         # Delete uploaded image if database fails
         if image_filename:
             try:
-                os.remove(settings.UPLOAD_DIR_DP / image_filename)
+                os.remove(settings.UPLOAD_DIR_DP / "teachers" / image_filename)
             except:
                 pass
         raise HTTPException(

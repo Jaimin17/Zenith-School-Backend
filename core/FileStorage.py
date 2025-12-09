@@ -7,6 +7,7 @@ from PIL import Image
 from fastapi import UploadFile
 from core.config import settings
 
+
 async def process_and_save_image(file: UploadFile, folder_name: str, username: str) -> str:
     file_ext = Path(file.filename).suffix.lower()
 
@@ -15,7 +16,6 @@ async def process_and_save_image(file: UploadFile, folder_name: str, username: s
 
     contents = await file.read()
     file_size = len(contents)
-
 
     if file_size > settings.MAX_DP_FILE_SIZE:
         raise ValueError(f"File too large. Maximum size: {settings.MAX_DP_FILE_SIZE / (1024 * 1024):.1f}MB")
@@ -42,25 +42,37 @@ async def process_and_save_image(file: UploadFile, folder_name: str, username: s
                 background = Image.new('RGB', img.size, (255, 255, 255))
                 if img.mode == 'P':
                     img = img.convert('RGBA')
-                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                if img.mode in ('RGBA', 'LA'):
+                    background.paste(img, mask=img.split()[-1])
+                else:
+                    background.paste(img)
                 img = background
 
             # Resize if too large (maintain aspect ratio)
-            if img.width > settings.IMAGE_MAX_WIDTH or img.height > settings.IMAGE_MAX_HEIGHT:
-                img.thumbnail((settings.IMAGE_MAX_WIDTH, settings.IMAGE_MAX_HEIGHT), Image.Resampling.LANCZOS)
+            max_width = settings.IMAGE_MAX_WIDTH
+            max_height = settings.IMAGE_MAX_HEIGHT
+
+            if img.width > max_width or img.height > max_height:
+                img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
 
             # Save optimized image
             img.save(filepath, quality=85, optimize=True)
 
         # Remove temporary file
-        os.remove(temp_path)
+        temp_path.unlink(missing_ok=True)
 
         return filename
 
     except Exception as e:
-        # Clean up on error
-        if temp_path.exists():
-            os.remove(temp_path)
-        if filepath.exists():
-            os.remove(filepath)
+        cleanup_image(temp_path)
+        cleanup_image(filepath)
         raise ValueError(f"Failed to process image: {str(e)}")
+
+
+def cleanup_image(filepath: Path) -> None:
+    """Safely delete an image file."""
+    try:
+        if filepath.exists():
+            filepath.unlink()
+    except Exception:
+        pass
