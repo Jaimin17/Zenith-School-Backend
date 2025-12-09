@@ -1,14 +1,16 @@
 import uuid
-from datetime import date
-from typing import List
+from datetime import date, datetime
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
+
+from core.config import settings
 from deps import CurrentUser, TeacherOrAdminUser, AdminUser
 from core.database import SessionDep
 from models import UserSex
 from repository.teacher import getAllTeachersIsDeleteFalse, getAllTeachersOfClassAndIsDeleteFalse, countTeacher, \
-    findTeacherById, teacherSave, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject
-from schemas import TeacherRead, SaveResponse, TeacherSave, TeacherUpdateBase, TeacherDeleteResponse
+    findTeacherById, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject, teacherSaveWithImage
+from schemas import TeacherRead, SaveResponse, TeacherSave, TeacherUpdateBase, TeacherDeleteResponse, TeacherCreateForm
 
 router = APIRouter(
     prefix="/teacher",
@@ -40,62 +42,60 @@ def getTeacherById(teacherId: uuid.UUID, current_user: AdminUser, session: Sessi
 
 
 @router.post("/save", response_model=SaveResponse)
-def saveTeacher(teacher: TeacherSave, current_user: AdminUser, session: SessionDep):
-    if not teacher.username or len(teacher.username.strip()) < 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Username is required and must be at least 3 characters long."
-        )
+async def saveTeacher(
+        current_user: AdminUser,
+        session: SessionDep,
+        username: str = Form(...),
+        first_name: str = Form(...),
+        last_name: str = Form(...),
+        email: str = Form(...),
+        phone: str = Form(...),
+        address: str = Form(...),
+        blood_type: str = Form(...),
+        sex: str = Form(...),
+        dob: date = Form(...),  # Pydantic/FastAPI handles date conversion
+        subjects: List[uuid.UUID] = Form(...),
+        img: Optional[UploadFile] = File(None)
+):
+    teacher_data = {
+        "username": username,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": email,
+        "phone": phone,
+        "address": address,
+        "blood_type": blood_type,
+        "sex": sex,
+        "dob": dob,
+        "subjects": subjects
+    }
 
-    if not teacher.first_name or len(teacher.first_name.strip()) < 1:
-        raise HTTPException(
-            status_code=400,
-            detail="First name is required."
-        )
+    try:
+        sex_enum = UserSex(teacher_data["sex"].lower())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid sex value. Must be 'male' or 'female'.")
 
-    if not teacher.last_name or len(teacher.last_name.strip()) < 1:
-        raise HTTPException(
-            status_code=400,
-            detail="Last name is required."
-        )
+    if not settings.PHONE_RE.match(teacher_data["phone"].strip()):
+        raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
 
-    if not teacher.phone or len(teacher.phone.strip()) != 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Phone number is required and must be valid(10 Digits)."
-        )
-
-    if not teacher.address or len(teacher.address.strip()) < 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Address is required and must be at least 10 characters long."
-        )
-
-    if not teacher.blood_type:
-        raise HTTPException(
-            status_code=400,
-            detail="Blood type is required."
-        )
-
-    if not teacher.dob or not isinstance(teacher.dob, date):
-        raise HTTPException(
-            status_code=400,
-            detail="Date of Birth is required."
-        )
-
-    if not isinstance(teacher.sex, UserSex):
-        raise HTTPException(
-            status_code=400,
-            detail="Sex is required."
-        )
-
-    if not teacher.subjects or len(teacher.subjects) == 0:
+    if not teacher_data["subjects"]:
         raise HTTPException(
             status_code=400,
             detail="At least one subject must be assigned to the teacher."
         )
 
-    result = teacherSave(teacher, session)
+    if not settings.PHONE_RE.match(teacher_data["phone"].strip()):
+        raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
+
+    if not teacher_data["subjects"]:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one subject must be assigned to the teacher."
+        )
+
+    teacher_data["sex"] = sex_enum
+
+    result = await teacherSaveWithImage(teacher_data, img, session)
     return result
 
 

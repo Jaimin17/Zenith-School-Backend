@@ -1,5 +1,7 @@
+import re
 import secrets
 import warnings
+from pathlib import Path
 from typing import Any, Literal, Annotated, Self
 
 from pydantic import BeforeValidator, computed_field, model_validator, AnyUrl, HttpUrl, PostgresDsn, EmailStr
@@ -10,12 +12,22 @@ import os
 
 load_dotenv(dotenv_path=".env")
 
+
 def parse_cors(v: Any) -> list[str] | str:
     if isinstance(v, str) and v.startswith("["):
         return [i.strip() for i in v.split(",") if i.strip()]
     elif isinstance(v, list | str):
         return v
     raise ValueError(v)
+
+
+def parse_path(v: Any) -> Path:
+    if isinstance(v, str):
+        return Path(v)
+    elif isinstance(v, Path):
+        return v
+    raise ValueError(f"Cannot parse {v} as Path")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -52,7 +64,17 @@ class Settings(BaseSettings):
 
     ITEMS_PER_PAGE: int = 1
 
+    UPLOAD_DIR_DP: Annotated[Path, BeforeValidator(parse_path)] = Path("uploads")
+    ALLOWED_DP_EXTENSIONS: str = ".jpg,.jpeg,.png,.webp"
+    MAX_DP_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB
+    IMAGE_MAX_WIDTH: int = 800
+    IMAGE_MAX_HEIGHT: int = 800
 
+    @property
+    def allowed_extensions(self) -> set[str]:
+        """Get allowed extensions as a set"""
+        cleaned = self.ALLOWED_DP_EXTENSIONS.strip().strip("{}[]()").replace(" ", "")
+        return {ext.strip() for ext in cleaned.split(",") if ext.strip()}
 
     # @computed_field
     @property
@@ -65,6 +87,14 @@ class Settings(BaseSettings):
             port=self.POSTGRES_PORT,
             path=self.POSTGRES_DB,
         )
+
+    @property
+    def PHONE_RE(self) -> re.Pattern:
+        return re.compile(r'^[6-9]\d{9}$')
+
+    @property
+    def EMAIL_RE(self) -> re.Pattern:
+        return re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
@@ -80,7 +110,6 @@ class Settings(BaseSettings):
             else:
                 raise ValueError(message)
 
-
     @model_validator(mode="after")
     def _enforce_non_default_secrets(self) -> Self:
         if os.getenv("ALEMBIC_RUNNING") == "1":
@@ -90,7 +119,11 @@ class Settings(BaseSettings):
         self._check_default_secret(
             "FIRST_SUPERUSER_PASSWORD", self.FIRST_SUPERUSER_PASSWORD
         )
+
+        self.UPLOAD_DIR_DP.mkdir(parents=True, exist_ok=True)
+
         print(self)
         return self
+
 
 settings = Settings()

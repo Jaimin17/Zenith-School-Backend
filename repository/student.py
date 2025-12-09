@@ -7,7 +7,6 @@ from sqlmodel import Session, select, or_
 from sqlalchemy import func, Select
 from core.config import settings
 from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance
-from repository.teacher import PHONE_RE
 from schemas import StudentSave, StudentUpdateBase
 
 
@@ -97,7 +96,7 @@ def studentSave(student: StudentSave, session: Session):
     email = student.email.strip().lower()
     phone = student.phone.strip()
 
-    if not PHONE_RE.match(phone):
+    if not settings.PHONE_RE.match(phone):
         raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
 
     duplicate_query = (
@@ -200,7 +199,7 @@ def StudentUpdate(student: StudentUpdateBase, session: Session):
     new_email = student.email.strip().lower()
     new_phone = student.phone.strip()
 
-    if not PHONE_RE.match(new_phone):
+    if not settings.PHONE_RE.match(new_phone):
         raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
 
     findSameStudentQuery = (

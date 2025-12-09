@@ -2,16 +2,16 @@ import re
 import uuid
 from typing import List, Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from psycopg import IntegrityError
 from sqlalchemy import func, Select, or_
 from sqlmodel import Session, select
+import os
 
+from core.FileStorage import process_and_save_image
 from core.config import settings
 from models import Teacher, Lesson, Subject, Class
-from schemas import TeacherSave, TeacherUpdateBase
-
-PHONE_RE = re.compile(r'^[6-9]\d{9}$')
+from schemas import TeacherSave, TeacherUpdateBase, TeacherCreateForm
 
 
 def addSearchOption(query: Select, search: str):
@@ -82,13 +82,16 @@ def findTeacherById(teacherId: uuid.UUID, session: Session):
     return teacher
 
 
-def teacherSave(teacher: TeacherSave, session: Session):
-    username = teacher.username.strip()
-    email = teacher.email.strip().lower()
-    phone = teacher.phone.strip()
+async def teacherSaveWithImage(teacher_data: dict, img: Optional[UploadFile], session: Session):
+    username = teacher_data["username"].strip()
+    email = teacher_data["email"].strip().lower()
+    phone = teacher_data["phone"].strip()
 
-    if not PHONE_RE.match(phone):
+    if not settings.PHONE_RE.match(phone):
         raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
+
+    if not settings.EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Invalid Email address.")
 
     duplicate_query = (
         select(Teacher)
@@ -105,48 +108,51 @@ def teacherSave(teacher: TeacherSave, session: Session):
     existing = session.exec(duplicate_query).first()
 
     if existing:
-        raise HTTPException(status_code=400, detail="Teacher exists with same username, email, or phone.")
+        if existing.username.lower() == username.lower():
+            raise HTTPException(status_code=400, detail="Username already exists.")
+        elif existing.email.lower() == email:
+            raise HTTPException(status_code=400, detail="Email already exists.")
+        else:
+            raise HTTPException(status_code=400, detail="Phone number already exists.")
 
-    subject_ids = teacher.subjects or []
+    subject_ids = teacher_data["subjects"] or []
     subjects = []
 
     if subject_ids:
-        # Convert all IDs to UUID objects safely
-        normalized_ids = []
-        for sid in subject_ids:
-            try:
-                normalized_ids.append(uuid.UUID(str(sid)))
-            except Exception:
-                raise HTTPException(status_code=400, detail=f"Invalid subject ID: {sid}")
-
         subject_query = (
             select(Subject)
-            .where(Subject.id.in_(normalized_ids), Subject.is_delete == False)
+            .where(Subject.id.in_(subject_ids), Subject.is_delete == False)
         )
-
         subjects = session.exec(subject_query).all()
         found_ids = {s.id for s in subjects}
 
-        missing = [str(sid) for sid in normalized_ids if sid not in found_ids]
+        missing = [str(sid) for sid in subject_ids if sid not in found_ids]
         if missing:
             raise HTTPException(
                 status_code=404,
                 detail=f"No subject(s) found with ID(s): {', '.join(missing)}"
             )
 
+    image_filename = None
+    if img and img.filename:
+        try:
+            image_filename = await process_and_save_image(img, "parents", username)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+
     new_teacher = Teacher(
         username=username,
-        first_name=teacher.first_name.strip(),
-        last_name=teacher.last_name.strip(),
+        first_name=teacher_data["first_name"].strip(),
+        last_name=teacher_data["last_name"].strip(),
         email=email,
         phone=phone,
-        address=teacher.address.strip(),
-        img=teacher.img,
-        blood_type=teacher.blood_type,
-        sex=teacher.sex,
-        dob=teacher.dob,
+        address=teacher_data["address"].strip(),
+        img=image_filename,  # Save filename/path
+        blood_type=teacher_data["blood_type"],
+        sex=teacher_data["sex"],
+        dob=teacher_data["dob"],
         is_delete=False,
-        password="user@123"  # or generate one, depending on your logic
+        password="user@123"
     )
 
     new_teacher.subjects = subjects
@@ -158,8 +164,16 @@ def teacherSave(teacher: TeacherSave, session: Session):
         session.commit()
     except IntegrityError as e:
         session.rollback()
-        raise HTTPException(status_code=400, detail="Unique constraint violated (username/email/phone already exists).")
-
+        # Delete uploaded image if database fails
+        if image_filename:
+            try:
+                os.remove(settings.UPLOAD_DIR_DP / image_filename)
+            except:
+                pass
+        raise HTTPException(
+            status_code=400,
+            detail="Database error. Username, email, or phone already exists."
+        )
     session.refresh(new_teacher)
 
     return {
@@ -183,7 +197,7 @@ def TeacherUpdate(teacher: TeacherUpdateBase, session: Session):
     new_email = teacher.email.strip().lower()
     new_phone = teacher.phone.strip()
 
-    if not PHONE_RE.match(new_phone):
+    if not settings.PHONE_RE.match(new_phone):
         raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
 
     findSameNameTeacherquery = (
