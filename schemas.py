@@ -253,23 +253,6 @@ class TeacherRead(TeacherBase):
     classes: List[ClassBase] = []
 
 
-class TeacherSave(SQLModel):
-    username: str
-    first_name: str
-    last_name: str
-    email: str
-    phone: str
-    address: str
-    blood_type: str
-    sex: UserSex
-    dob: date
-    subjects: List[uuid.UUID]
-
-
-class TeacherUpdateBase(TeacherSave):
-    id: uuid.UUID
-
-
 class TeacherDeleteResponse(SaveResponse):
     subject_affected: Optional[int] = Field(
         default=None,

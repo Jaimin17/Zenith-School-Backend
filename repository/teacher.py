@@ -8,10 +8,9 @@ from sqlalchemy import func, Select, or_
 from sqlmodel import Session, select
 import os
 
-from core.FileStorage import process_and_save_image
+from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
 from models import Teacher, Lesson, Subject, Class
-from schemas import TeacherSave, TeacherUpdateBase
 
 
 def addSearchOption(query: Select, search: str):
@@ -181,10 +180,13 @@ async def teacherSaveWithImage(teacher_data: dict, img: Optional[UploadFile], se
     }
 
 
-def TeacherUpdate(teacher: TeacherUpdateBase, session: Session):
+async def TeacherUpdate(teacher_data: dict, img: Optional[UploadFile], session: Session):
+    file_name = img
+    print(file_name)
+
     findTeacherQuery = (
         select(Teacher)
-        .where(Teacher.id == teacher.id, Teacher.is_delete == False)
+        .where(Teacher.id == teacher_data["id"], Teacher.is_delete == False)
     )
 
     currentTeacher = session.exec(findTeacherQuery).first()
@@ -192,9 +194,9 @@ def TeacherUpdate(teacher: TeacherUpdateBase, session: Session):
     if currentTeacher is None:
         raise HTTPException(status_code=404, detail="No teacher found with the provided ID.")
 
-    new_username = teacher.username.strip()
-    new_email = teacher.email.strip().lower()
-    new_phone = teacher.phone.strip()
+    new_username = teacher_data["username"].strip()
+    new_email = teacher_data["email"].strip().lower()
+    new_phone = teacher_data["phone"].strip()
 
     if not settings.PHONE_RE.match(new_phone):
         raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
@@ -208,7 +210,7 @@ def TeacherUpdate(teacher: TeacherUpdateBase, session: Session):
                 func.trim(Teacher.phone) == new_phone
             ),
             Teacher.is_delete == False,
-            Teacher.id != teacher.id
+            Teacher.id != teacher_data["id"]
         )
     )
 
@@ -217,7 +219,7 @@ def TeacherUpdate(teacher: TeacherUpdateBase, session: Session):
     if existing:
         raise HTTPException(status_code=400, detail="A teacher with the same username, email, or phone already exists.")
 
-    subject_ids = teacher.subjects or []
+    subject_ids = teacher_data["subjects"] or []
     subjects: List[Subject] = []
 
     if subject_ids:
@@ -243,16 +245,29 @@ def TeacherUpdate(teacher: TeacherUpdateBase, session: Session):
                 detail=f"No subject(s) found with ID(s): {', '.join(missing)}"
             )
 
+    image_filename = currentTeacher.img
+    if img and img.filename:
+        try:
+            image_filename = await process_and_save_image(img, "teachers", new_username)
+
+            if currentTeacher.img and currentTeacher.img != image_filename:
+                old_image_path = settings.UPLOAD_DIR_DP / "teachers" / currentTeacher.img
+                cleanup_image(old_image_path)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+
     currentTeacher.username = new_username
-    currentTeacher.first_name = teacher.first_name
-    currentTeacher.last_name = teacher.last_name
+    currentTeacher.first_name = teacher_data["first_name"]
+    currentTeacher.last_name = teacher_data["last_name"]
     currentTeacher.email = new_email
     currentTeacher.phone = new_phone
-    currentTeacher.address = teacher.address.strip()
-    currentTeacher.img = teacher.img
-    currentTeacher.blood_type = teacher.blood_type
-    currentTeacher.sex = teacher.sex
-    currentTeacher.dob = teacher.dob
+    currentTeacher.address = teacher_data["address"].strip()
+    currentTeacher.img = image_filename
+    currentTeacher.blood_type = teacher_data["blood_type"]
+    currentTeacher.sex = teacher_data["sex"]
+    currentTeacher.dob = teacher_data["dob"]
     currentTeacher.subjects = subjects
 
     session.add(currentTeacher)
@@ -261,6 +276,11 @@ def TeacherUpdate(teacher: TeacherUpdateBase, session: Session):
         session.commit()
     except IntegrityError as e:
         session.rollback()
+
+        # If we uploaded a new image but commit failed, clean it up
+        if img and img.filename and image_filename:
+            new_image_path = settings.UPLOAD_DIR_DP / "teachers" / image_filename
+            cleanup_image(new_image_path)
         raise HTTPException(status_code=400, detail="Unique constraint violated (username/email/phone).")
 
     session.refresh(currentTeacher)

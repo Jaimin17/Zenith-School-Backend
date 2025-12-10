@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
-from typing import List, Optional
-
+from typing import List, Optional, Union
+from starlette.datastructures import UploadFile as StarletteUploadFile
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
 
 from core.config import settings
@@ -10,7 +10,7 @@ from core.database import SessionDep
 from models import UserSex
 from repository.teacher import getAllTeachersIsDeleteFalse, getAllTeachersOfClassAndIsDeleteFalse, countTeacher, \
     findTeacherById, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject, teacherSaveWithImage
-from schemas import TeacherRead, SaveResponse, TeacherSave, TeacherUpdateBase, TeacherDeleteResponse
+from schemas import TeacherRead, SaveResponse, TeacherDeleteResponse
 
 router = APIRouter(
     prefix="/teacher",
@@ -55,7 +55,7 @@ async def saveTeacher(
         sex: str = Form(...),
         dob: date = Form(...),  # Pydantic/FastAPI handles date conversion
         subjects: str = Form(...),
-        img: Optional[UploadFile] = File(None)
+        img: Union[UploadFile, str, None] = File(None)
 ):
     try:
         subject_ids = [
@@ -91,6 +91,15 @@ async def saveTeacher(
             detail="Invalid Indian phone number. Must be 10 digits starting with 6-9."
         )
 
+    processed_img: Optional[UploadFile] = None
+    if img is not None and not isinstance(img, str):
+        # Check if it has the attributes of an UploadFile (duck typing)
+        if hasattr(img, 'filename') and hasattr(img, 'file') and img.filename:
+            processed_img = img
+    elif isinstance(img, str) and img.strip():
+        # If somehow a non-empty string is passed, treat as no image
+        processed_img = None
+
     teacher_data = {
         "username": username,
         "first_name": first_name,
@@ -104,73 +113,99 @@ async def saveTeacher(
         "subjects": subject_ids
     }
 
-    result = await teacherSaveWithImage(teacher_data, img, session)
+    result = await teacherSaveWithImage(teacher_data, processed_img, session)
     return result
 
 
 @router.put("/update", response_model=SaveResponse)
-def updateTeacher(current_user: AdminUser, teacher: TeacherUpdateBase, session: SessionDep):
-    if not teacher.id:
+async def updateTeacher(
+        current_user: AdminUser,
+        session: SessionDep,
+        id: str = Form(...),
+        username: str = Form(...),
+        first_name: str = Form(...),
+        last_name: str = Form(...),
+        email: str = Form(...),
+        phone: str = Form(...),
+        address: str = Form(...),
+        blood_type: str = Form(...),
+        sex: str = Form(...),
+        dob: date = Form(...),  # Pydantic/FastAPI handles date conversion
+        subjects: str = Form(...),
+        img: Union[UploadFile, str, None] = File(None)
+):
+    if not id:
         raise HTTPException(
             status_code=400,
             detail="Teacher ID is required for updating."
         )
 
-    if not teacher.username or len(teacher.username.strip()) < 3:
+    try:
+        teacherId = uuid.UUID(id.strip())
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail="Username is required and must be at least 3 characters long."
+            detail=f"Invalid teacher UUID format: {str(e)}"
         )
 
-    if not teacher.first_name or len(teacher.first_name.strip()) < 1:
+    try:
+        subject_ids = [
+            uuid.UUID(s.strip())
+            for s in subjects.split(',')
+            if s.strip()
+        ]
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail="First name is required."
+            detail=f"Invalid subject UUID format: {str(e)}"
         )
 
-    if not teacher.last_name or len(teacher.last_name.strip()) < 1:
-        raise HTTPException(
-            status_code=400,
-            detail="Last name is required."
-        )
-
-    if not teacher.phone or len(teacher.phone.strip()) != 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Phone number is required and must be valid(10 Digits)."
-        )
-
-    if not teacher.address or len(teacher.address.strip()) < 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Address is required and must be at least 10 characters long."
-        )
-
-    if not teacher.blood_type:
-        raise HTTPException(
-            status_code=400,
-            detail="Blood type is required."
-        )
-
-    if not teacher.dob or not isinstance(teacher.dob, date):
-        raise HTTPException(
-            status_code=400,
-            detail="Date of Birth is required."
-        )
-
-    if not isinstance(teacher.sex, UserSex):
-        raise HTTPException(
-            status_code=400,
-            detail="Sex is required."
-        )
-
-    if not teacher.subjects or len(teacher.subjects) == 0:
+    # Validate subjects list is not empty
+    if not subject_ids:
         raise HTTPException(
             status_code=400,
             detail="At least one subject must be assigned to the teacher."
         )
 
-    result = TeacherUpdate(teacher, session)
+    try:
+        sex_enum = UserSex(sex.lower())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid sex value. Must be 'male' or 'female'."
+        )
+
+        # Validate phone format
+    if not settings.PHONE_RE.match(phone.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Indian phone number. Must be 10 digits starting with 6-9."
+        )
+
+    processed_img: Optional[UploadFile] = None
+    if img is not None and not isinstance(img, str):
+        # Check if it has the attributes of an UploadFile (duck typing)
+        if hasattr(img, 'filename') and hasattr(img, 'file') and img.filename:
+            processed_img = img
+    elif isinstance(img, str) and img.strip():
+        # If somehow a non-empty string is passed, treat as no image
+        processed_img = None
+
+    teacher_data = {
+        "id": teacherId,
+        "username": username,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": email,
+        "phone": phone,
+        "address": address,
+        "blood_type": blood_type,
+        "sex": sex_enum,
+        "dob": dob,
+        "subjects": subject_ids
+    }
+
+    result = await TeacherUpdate(teacher_data, processed_img, session)
     return result
 
 
