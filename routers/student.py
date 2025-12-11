@@ -1,14 +1,17 @@
 import uuid
-from datetime import date
-from typing import List
+from datetime import date, datetime
+from typing import List, Union, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Form, UploadFile, File
+
+from core.config import settings
 from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser
 from core.database import SessionDep
 from models import UserSex
 from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, StudentDeleteResponse
 from repository.student import getAllStudentsIsDeleteFalse, getAllStudentsOfTeacherAndIsDeleteFalse, countStudent, \
-    countStudentBySexAll, getStudentByIdAndIsDeleteFalse, studentSave, StudentUpdate, studentSoftDelete
+    countStudentBySexAll, getStudentByIdAndIsDeleteFalse, StudentUpdate, studentSoftDelete, \
+    studentSaveWithImage
 
 router = APIRouter(
     prefix="/student",
@@ -52,79 +55,139 @@ def getStudentByTeacherId(teacherId: uuid.UUID, current_user: CurrentUser, sessi
 
 
 @router.post("/save", response_model=SaveResponse)
-def saveStudent(student: StudentSave, current_user: AdminUser, session: SessionDep):
-    if not student.username or len(student.username.strip()) < 3:
+async def saveStudent(
+        current_user: AdminUser,
+        session: SessionDep,
+        username: str = Form(...),
+        first_name: str = Form(...),
+        last_name: str = Form(...),
+        email: str = Form(...),
+        phone: str = Form(...),
+        address: str = Form(...),
+        blood_type: str = Form(...),
+        sex: str = Form(...),
+        dob: date = Form(...),
+        parent_id: str = Form(...),
+        class_id: str = Form(...),
+        grade_id: str = Form(...),
+        img: Union[UploadFile, str, None] = File(None)
+):
+    try:
+        parent_uuid = uuid.UUID(parent_id.strip()) if parent_id else None
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail="Username is required and must be at least 3 characters long."
+            detail=f"Invalid parent UUID format: {str(e)}"
         )
 
-    if not student.first_name or len(student.first_name.strip()) < 1:
+    if not parent_uuid:
         raise HTTPException(
             status_code=400,
-            detail="First name is required."
+            detail="Parent ID is required."
         )
 
-    if not student.last_name or len(student.last_name.strip()) < 1:
+    try:
+        class_uuid = uuid.UUID(class_id.strip()) if class_id else None
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail="Last name is required."
+            detail=f"Invalid class UUID format: {str(e)}"
         )
 
-    if not student.phone or len(student.phone.strip()) != 10:
+    if not class_uuid:
         raise HTTPException(
             status_code=400,
-            detail="Phone number is required and must be valid(10 Digits)."
+            detail="Class ID is required."
         )
 
-    if not student.address or len(student.address.strip()) < 10:
+    try:
+        grade_uuid = uuid.UUID(grade_id.strip()) if grade_id else None
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail="Address is required and must be at least 10 characters long."
+            detail=f"Invalid grade UUID format: {str(e)}"
         )
 
-    if not student.blood_type:
+    if not grade_uuid:
         raise HTTPException(
             status_code=400,
-            detail="Blood type is required."
+            detail="Grade ID is required."
         )
 
-    if not student.dob or not isinstance(student.dob, date):
+    try:
+        sex_enum = UserSex(sex.lower())
+    except ValueError:
         raise HTTPException(
             status_code=400,
-            detail="Date of Birth is required."
+            detail="Invalid sex value. Must be 'male' or 'female'."
         )
 
-    if not isinstance(student.sex, UserSex):
+        # Validate phone format
+    if not settings.PHONE_RE.match(phone.strip()):
         raise HTTPException(
             status_code=400,
-            detail="Sex is required."
+            detail="Invalid Indian phone number. Must be 10 digits starting with 6-9."
         )
 
-    if not student.parent_id:
+    if not settings.EMAIL_RE.match(email.strip()):
         raise HTTPException(
             status_code=400,
-            detail="Parent is required."
+            detail="Invalid email format."
         )
 
-    if not student.class_id:
+    if not username.strip():
+        raise HTTPException(status_code=400, detail="Username cannot be empty.")
+
+    if not first_name.strip():
+        raise HTTPException(status_code=400, detail="First name cannot be empty.")
+
+    if not last_name.strip():
+        raise HTTPException(status_code=400, detail="Last name cannot be empty.")
+
+    if not address.strip():
+        raise HTTPException(status_code=400, detail="Address cannot be empty.")
+
+    today = datetime.now().date()
+    age = (today - dob).days // 365
+
+    if age < 3 or age > 25:
         raise HTTPException(
             status_code=400,
-            detail="Assign student to a class."
+            detail="Student age must be between 3 and 25 years."
         )
 
-    if not student.grade_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Grade is required."
-        )
+    processed_img: Optional[UploadFile] = None
+    if img is not None and not isinstance(img, str):
+        # Check if it has the attributes of an UploadFile (duck typing)
+        if hasattr(img, 'filename') and hasattr(img, 'file') and img.filename:
+            processed_img = img
+    elif isinstance(img, str) and img.strip():
+        # If somehow a non-empty string is passed, treat as no image
+        processed_img = None
 
-    result = studentSave(student, session)
+    student_data = {
+        "username": username,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": email,
+        "phone": phone,
+        "address": address,
+        "blood_type": blood_type,
+        "sex": sex_enum,
+        "dob": dob,
+        "parent_id": parent_uuid,
+        "class_id": class_uuid,
+        "grade_id": grade_uuid
+    }
+
+    result = await studentSaveWithImage(student_data, processed_img, session)
     return result
 
 
 @router.put("/update", response_model=SaveResponse)
-def updateStudent(current_user: AdminUser, student: StudentUpdateBase, session: SessionDep):
+def updateStudent(
+        current_user: AdminUser, student: StudentUpdateBase, session: SessionDep
+    ):
     if not student.id:
         raise HTTPException(
             status_code=400,
