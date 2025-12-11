@@ -214,10 +214,13 @@ async def studentSaveWithImage(student_data: dict, img: Optional[UploadFile], se
     }
 
 
-def StudentUpdate(student: StudentUpdateBase, session: Session):
+async def StudentUpdate(student_data: dict, img: Optional[UploadFile], session: Session):
+    file_name = img
+    print(file_name)
+
     findStudentQuery = (
         select(Student)
-        .where(Student.id == student.id, Student.is_delete == False)
+        .where(Student.id == student_data["id"], Student.is_delete == False)
     )
 
     currentStudent = session.exec(findStudentQuery).first()
@@ -225,12 +228,9 @@ def StudentUpdate(student: StudentUpdateBase, session: Session):
     if currentStudent is None:
         raise HTTPException(status_code=404, detail="No student found with the provided ID.")
 
-    new_username = student.username.strip()
-    new_email = student.email.strip().lower()
-    new_phone = student.phone.strip()
-
-    if not settings.PHONE_RE.match(new_phone):
-        raise HTTPException(status_code=400, detail="Invalid Indian phone number. Must be 10 digits starting with 6-9.")
+    new_username = student_data["username"].strip()
+    new_email = student_data["email"].strip().lower()
+    new_phone = student_data["phone"].strip()
 
     findSameStudentQuery = (
         select(Student)
@@ -241,52 +241,102 @@ def StudentUpdate(student: StudentUpdateBase, session: Session):
                 func.trim(Student.phone) == new_phone
             ),
             Student.is_delete == False,
-            Student.id != student.id
+            Student.id != student_data["id"]
         )
     )
 
     existing: Optional[Student] = session.exec(findSameStudentQuery).first()
 
     if existing:
-        raise HTTPException(status_code=400, detail="A student with the same username, email, or phone already exists.")
+        # Determine which field is duplicated
+        if existing.username.lower() == new_username.lower():
+            raise HTTPException(
+                status_code=409,
+                detail="A student with this username already exists."
+            )
+        elif existing.email.lower() == new_email:
+            raise HTTPException(
+                status_code=409,
+                detail="A student with this email already exists."
+            )
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="A student with this phone number already exists."
+            )
 
     # Validate parent_id
-    if student.parent_id:
-        parent_query = select(Parent).where(Parent.id == student.parent_id, Parent.is_delete == False)
-        parent = session.exec(parent_query).first()
-        if not parent:
-            raise HTTPException(status_code=404, detail=f"No parent found with ID: {student.parent_id}")
+    parent_query = select(Parent).where(
+        Parent.id == student_data["parent_id"],
+        Parent.is_delete == False
+    )
+    parent = session.exec(parent_query).first()
+    if not parent:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No parent found with ID: {student_data['parent_id']}"
+        )
 
     # Validate class_id
-    if student.class_id:
-        class_query = select(Class).where(Class.id == student.class_id, Class.is_delete == False)
-        related_class: Optional[Class] = session.exec(class_query).first()
-        if not related_class:
-            raise HTTPException(status_code=404, detail=f"No class found with ID: {student.class_id}")
-        else:
-            if currentStudent.class_id != student.class_id and related_class.capacity == len(related_class.students):
-                raise HTTPException(status_code=400, detail=f"Class is already full.")
+    class_query = select(Class).where(
+        Class.id == student_data["class_id"],
+        Class.is_delete == False
+    )
+    related_class: Optional[Class] = session.exec(class_query).first()
+    if not related_class:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No class found with ID: {student_data['class_id']}"
+        )
+
+    if currentStudent.class_id != student_data["class_id"]:
+        # Count current students in the target class (excluding soft-deleted)
+        current_students_count = len([s for s in related_class.students if not s.is_delete])
+
+        if current_students_count >= related_class.capacity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Class '{related_class.name}' is already full (capacity: {related_class.capacity})."
+            )
 
     # Validate grade_id
-    if student.grade_id:
-        grade_query = select(Grade).where(Grade.id == student.grade_id, Grade.is_delete == False)
-        grade = session.exec(grade_query).first()
-        if not grade:
-            raise HTTPException(status_code=404, detail=f"No grade found with ID: {student.grade_id}")
+    grade_query = select(Grade).where(
+        Grade.id == student_data["grade_id"],
+        Grade.is_delete == False
+    )
+    grade = session.exec(grade_query).first()
+    if not grade:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No grade found with ID: {student_data['grade_id']}"
+        )
+
+    image_filename = currentStudent.img
+    if img and img.filename:
+        try:
+            image_filename = await process_and_save_image(img, "students", new_username)
+
+            if currentStudent.img and currentStudent.img != image_filename:
+                old_image_path = settings.UPLOAD_DIR_DP / "students" / currentStudent.img
+                cleanup_image(old_image_path)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
     currentStudent.username = new_username
-    currentStudent.first_name = student.first_name
-    currentStudent.last_name = student.last_name
+    currentStudent.first_name = student_data["first_name"]
+    currentStudent.last_name = student_data["last_name"]
     currentStudent.email = new_email
     currentStudent.phone = new_phone
-    currentStudent.address = student.address.strip()
-    currentStudent.img = student.img
-    currentStudent.blood_type = student.blood_type
-    currentStudent.sex = student.sex
-    currentStudent.dob = student.dob
-    currentStudent.parent_id = student.parent_id
-    currentStudent.class_id = student.class_id
-    currentStudent.grade_id = student.grade_id
+    currentStudent.address = student_data["address"]
+    currentStudent.img = image_filename
+    currentStudent.blood_type = student_data["blood_type"]
+    currentStudent.sex = student_data["sex"]
+    currentStudent.dob = student_data["dob"]
+    currentStudent.parent_id = student_data["parent_id"]
+    currentStudent.class_id = student_data["class_id"]
+    currentStudent.grade_id = student_data["grade_id"]
 
     session.add(currentStudent)
 
@@ -294,7 +344,14 @@ def StudentUpdate(student: StudentUpdateBase, session: Session):
         session.commit()
     except IntegrityError as e:
         session.rollback()
-        raise HTTPException(status_code=400, detail="Unique constraint violated (username/email/phone).")
+        if img and img.filename and image_filename != currentStudent.img:
+            new_image_path = settings.UPLOAD_DIR_DP / "students" / image_filename
+            cleanup_image(new_image_path)
+
+        raise HTTPException(
+            status_code=409,
+            detail="Database integrity error: Username, email, or phone already exists."
+        )
 
     session.refresh(currentStudent)
 
