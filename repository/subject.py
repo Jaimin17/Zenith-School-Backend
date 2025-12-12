@@ -28,6 +28,8 @@ def getAllSubjectsIsDeleteFalse(session: Session, search: str = None, page: int 
         .where(Subject.is_delete == False)
     )
 
+    query = query.order_by(func.lower(Subject.name))
+
     query = addSearchOption(query, search)
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)

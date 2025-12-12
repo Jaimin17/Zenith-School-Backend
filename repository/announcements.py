@@ -35,6 +35,8 @@ def getAllAnnouncementsIsDeleteFalse(session: Session, search: str, page: int):
         .where(Announcement.is_delete == False)
     )
 
+    query = query.order_by(Announcement.announcement_date.desc())
+
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     announcements = session.exec(query).unique().all()
@@ -52,6 +54,8 @@ def getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, search, pag
             (Class.supervisor_id == teacherId) | (Announcement.class_id == None)
         )
     )
+
+    query = query.order_by(Announcement.announcement_date.desc())
 
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -72,6 +76,8 @@ def getAllAnnouncementsByStudentAndIsDeleteFalse(studentId, session, search, pag
         )
     )
 
+    query = query.order_by(Announcement.announcement_date.desc())
+
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     announcements = session.exec(query).unique().all()
@@ -90,6 +96,8 @@ def getAllAnnouncementsByParentAndIsDeleteFalse(parentId, session, search, page)
             (Student.parent_id == parentId) | (Announcement.class_id == None)
         )
     )
+
+    query = query.order_by(Announcement.announcement_date.desc())
 
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)

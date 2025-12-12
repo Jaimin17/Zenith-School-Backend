@@ -27,6 +27,8 @@ def getAllClassesIsDeleteFalse(session: Session, search: str, page: int):
         .where(Class.is_delete == False)
     )
 
+    query = query.order_by(func.lower(Class.name))
+
     query = addSearchOption(query, search)
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -55,6 +57,8 @@ def getAllClassOfTeacherAndIsDeleteFalse(supervisorId: uuid.UUID, session: Sessi
             Class.is_delete == False,
         )
     )
+
+    query = query.order_by(func.lower(Class.name))
 
     query = addSearchOption(query, search)
 

@@ -21,6 +21,8 @@ def attendanceOfWeek(session: Session, monday: datetime, sunday: datetime):
         )
     )
 
+    query = query.order_by(Attendance.attendance_date.desc())
+
     attendance = session.exec(query).all()
     return attendance
 
@@ -31,6 +33,8 @@ def attendanceOfStudentOfCurrentYear(studentId: uuid.UUID, startDate: date, sess
         .where(Attendance.attendance_date >= startDate, Attendance.student_id == studentId,
                Attendance.is_delete == False)
     )
+
+    query = query.order_by(Attendance.attendance_date.desc())
 
     attendance = session.exec(query).all()
     return attendance
@@ -362,6 +366,8 @@ def getAttendanceByLesson(lesson_id: uuid.UUID, attendance_date: Optional[date],
         attendance_query = attendance_query.where(
             func.date(Attendance.attendance_date) == attendance_date
         )
+
+    attendance_query = attendance_query.order_by(Attendance.attendance_date.desc())
 
     results = session.exec(attendance_query).all()
 

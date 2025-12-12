@@ -40,6 +40,8 @@ def getAllEventsByDate(session: Session, searchDate: date):
         )
     )
 
+    query = query.order_by(Event.start_time)
+
     events = session.exec(query).unique().all()
     return events
 
@@ -52,6 +54,8 @@ def getAllEventsIsDeleteFalse(session: Session, search: str, page: int):
         .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
         .where(Event.is_delete == False)
     )
+
+    query = query.order_by(Event.start_time.desc())
 
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -70,6 +74,8 @@ def getAllEventsByTeacherAndIsDeleteFalse(teacherId, session, search, page):
             (Class.supervisor_id == teacherId) | (Event.class_id == None)
         )
     )
+
+    query = query.order_by(Event.start_time.desc())
 
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -90,6 +96,8 @@ def getAllEventsByStudentAndIsDeleteFalse(studentId, session, search, page):
         )
     )
 
+    query = query.order_by(Event.start_time.desc())
+
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     events = session.exec(query).unique().all()
@@ -108,6 +116,8 @@ def getAllEventsByParentAndIsDeleteFalse(parentId, session, search, page):
             (Student.parent_id == parentId) | (Event.class_id == None)
         )
     )
+
+    query = query.order_by(Event.start_time.desc())
 
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
