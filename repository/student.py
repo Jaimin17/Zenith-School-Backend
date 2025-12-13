@@ -60,6 +60,8 @@ def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int):
         .where(Student.is_delete == False)
     )
 
+    query = query.order_by(func.lower(Student.username))
+
     query = addSearchOption(query, search)
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -84,11 +86,14 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
             Lesson.teacher_id == teacherId,
             Student.is_delete == False,
         )
+        .distinct()
     )
+
+    query = query.order_by(Student.username)
 
     query = addSearchOption(query, search)
 
-    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE).distinct()
+    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     results = session.exec(query).all()
     return results
 

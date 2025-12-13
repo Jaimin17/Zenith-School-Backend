@@ -37,6 +37,8 @@ def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 
         .where(Parent.is_delete == False)
     )
 
+    query = query.order_by(func.lower(Parent.username))
+
     query = addSearchOption(query, search)
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
