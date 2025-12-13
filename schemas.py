@@ -517,3 +517,10 @@ class AttendanceDetail(SQLModel):
 class AttendanceListResponse(SQLModel):
     attendances: List[AttendanceDetail]
     total: int
+
+
+class UsersCount(SQLModel):
+    admins: int
+    teachers: int
+    students: int
+    parents: int
