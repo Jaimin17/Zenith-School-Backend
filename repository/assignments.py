@@ -1,11 +1,12 @@
 import uuid
 from typing import Optional, List
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from psycopg import IntegrityError
 from sqlalchemy import Select, func
 from sqlmodel import Session, select, or_, and_
 
+from core.FileStorage import cleanup_pdf, process_and_save_pdf
 from core.config import settings
 from models import Assignment, Lesson, Class, Student, Result
 from schemas import AssignmentSave, AssignmentUpdate
@@ -93,7 +94,8 @@ def getAllAssignmentsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, 
     return all_assignments
 
 
-def assignmentSave(assignment: AssignmentSave, userId: uuid.UUID, role: str, session: Session):
+async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: Optional[UploadFile], userId: uuid.UUID, role: str,
+                                session: Session):
     lesson_query = (
         select(Lesson)
         .where(Lesson.id == assignment.lesson_id, Lesson.is_delete == False)
@@ -117,7 +119,7 @@ def assignmentSave(assignment: AssignmentSave, userId: uuid.UUID, role: str, ses
         select(Assignment)
         .where(
             Assignment.lesson_id == assignment.lesson_id,
-            Assignment.title.ilike(f"%{assignment.title.strip()}%"),
+            func.lower(func.trim(Assignment.title)) == assignment.title.strip().lower(),
             Assignment.is_delete == False
         )
     )
@@ -126,7 +128,7 @@ def assignmentSave(assignment: AssignmentSave, userId: uuid.UUID, role: str, ses
     if existing_title:
         raise HTTPException(
             status_code=400,
-            detail=f"An assignment with similar title already exists for this lesson."
+            detail=f"An assignment with the title '{assignment.title}' already exists for this lesson."
         )
 
     if lesson.class_id:
@@ -175,11 +177,21 @@ def assignmentSave(assignment: AssignmentSave, userId: uuid.UUID, role: str, ses
                     detail=f"Time conflict: Another assignment '{conflicting_assignment.title}' is scheduled for this class at the same time."
                 )
 
+    pdf_filename = None
+    if pdf and pdf.filename:
+        try:
+            pdf_filename = await process_and_save_pdf(pdf, "assignments", assignment.title)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
+
     new_assignment = Assignment(
         title=assignment.title.strip(),
         start_date=assignment.start_date,
         end_date=assignment.end_date,
         lesson_id=assignment.lesson_id,
+        pdf_name=pdf_filename,
         is_delete=False
     )
 
@@ -190,6 +202,9 @@ def assignmentSave(assignment: AssignmentSave, userId: uuid.UUID, role: str, ses
         session.commit()
     except IntegrityError as e:
         session.rollback()
+        if pdf_filename:
+            pdf_path = settings.UPLOAD_DIR_PDF / "assignments" / pdf_filename
+            cleanup_pdf(pdf_path)
         raise HTTPException(
             status_code=400,
             detail="Database integrity error. Please check your data."

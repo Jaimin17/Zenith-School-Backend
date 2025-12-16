@@ -1,11 +1,12 @@
 import uuid
 from datetime import timezone, date
-from typing import List
+from typing import List, Union, Optional
 from core.database import SessionDep
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 from deps import CurrentUser, AllUser, TeacherOrAdminUser
 from repository.assignments import getAllAssignmentsIsDeleteFalse, getAllAssignmentsOfTeacherIsDeleteFalse, \
-    getAllAssignmentsOfClassIsDeleteFalse, getAllAssignmentsOfParentIsDeleteFalse, assignmentSave, assignmentUpdate, \
+    getAllAssignmentsOfClassIsDeleteFalse, getAllAssignmentsOfParentIsDeleteFalse, assignmentSaveWithPdf, \
+    assignmentUpdate, \
     assignmentSoftDelete
 from schemas import AssignmentRead, SaveResponse, AssignmentSave, AssignmentUpdate, AssignmentDeleteResponse
 
@@ -44,46 +45,74 @@ def getAllExamsOfClass(classId: uuid.UUID, current_user: CurrentUser, session: S
 
 
 @router.post("/save", response_model=SaveResponse)
-def saveAssignments(assignment: AssignmentSave, current_user: TeacherOrAdminUser, session: SessionDep):
+async def saveAssignments(
+        current_user: TeacherOrAdminUser,
+        session: SessionDep,
+        title: str = Form(...),
+        start_date: date = Form(...),
+        end_date: date = Form(...),
+        lesson_id: str = Form(...),
+        pdf: Union[UploadFile, str, None] = File(None)
+):
     user, role = current_user
 
-    if not assignment.title or len(assignment.title.strip()) < 2:
+    if not title or len(title.strip()) < 2:
         raise HTTPException(
             status_code=400,
             detail="Title is required and must be at least 2 characters long."
         )
 
-    if not assignment.start_date or not isinstance(assignment.start_date, date):
+    if not start_date or not isinstance(start_date, date):
         raise HTTPException(
             status_code=400,
             detail="Start date is required."
         )
 
-    if not assignment.end_date or not isinstance(assignment.end_date, date):
+    if not end_date or not isinstance(end_date, date):
         raise HTTPException(
             status_code=400,
             detail="End date is required."
         )
 
-    if assignment.start_date >= assignment.end_date:
+    if start_date >= end_date:
         raise HTTPException(
             status_code=400,
             detail="Assignment start date must be before end date."
         )
 
-    if assignment.start_date < date.today():
+    if start_date < date.today():
         raise HTTPException(
             status_code=400,
             detail="Assignment start date cannot be in the past."
         )
 
-    if not assignment.lesson_id:
+    if not lesson_id:
         raise HTTPException(
             status_code=400,
             detail="Lesson id is required."
         )
 
-    result = assignmentSave(assignment, user.id, role, session)
+    try:
+        lesson_uuid = uuid.UUID(lesson_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Lesson UUID format: {str(e)}"
+        )
+
+    processed_pdf: Optional[UploadFile] = None
+    if pdf is not None and not isinstance(pdf, str):
+        if hasattr(pdf, 'filename') and hasattr(pdf, 'file') and pdf.filename:
+            processed_pdf = pdf
+
+    assignment = AssignmentSave(
+        title=title.strip(),
+        start_date=start_date,
+        end_date=end_date,
+        lesson_id=lesson_uuid
+    )
+
+    result = await assignmentSaveWithPdf(assignment, processed_pdf, user.id, role, session)
     return result
 
 

@@ -233,6 +233,7 @@ class Assignment(SQLModel, table=True):
     title: str = Field(nullable=False)
     start_date: date = Field(nullable=False)
     due_date: date = Field(nullable=False)
+    pdf_name: str = Field(nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
 
     lesson_id: Optional[uuid.UUID] = Field(default=None, foreign_key="lesson.id")
