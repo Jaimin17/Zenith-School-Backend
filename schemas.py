@@ -195,6 +195,7 @@ class AssignmentBase(SQLModel):
     title: str
     start_date: date
     due_date: date
+    pdf_name: str
 
 
 class ResultBase(SQLModel):

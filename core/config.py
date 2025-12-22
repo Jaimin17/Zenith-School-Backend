@@ -64,11 +64,15 @@ class Settings(BaseSettings):
 
     ITEMS_PER_PAGE: int = 1
 
-    UPLOAD_DIR_DP: Annotated[Path, BeforeValidator(parse_path)] = Path("uploads")
+    UPLOAD_DIR_DP: Annotated[Path, BeforeValidator(parse_path)] = Path("uploads/images")
     ALLOWED_DP_EXTENSIONS: str = ".jpg,.jpeg,.png,.webp"
     MAX_DP_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB
     IMAGE_MAX_WIDTH: int = 800
     IMAGE_MAX_HEIGHT: int = 800
+
+    UPLOAD_DIR_PDF: Annotated[Path, BeforeValidator(parse_path)] = Path("uploads/pdfs")
+    ALLOWED_PDF_EXTENSIONS: str = ".pdf"
+    MAX_PDF_FILE_SIZE: int = 10 * 1024 * 1024
 
     @property
     def allowed_extensions(self) -> set[str]:

@@ -94,7 +94,7 @@ def getAllAssignmentsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, 
     return all_assignments
 
 
-async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: Optional[UploadFile], userId: uuid.UUID, role: str,
+async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: UploadFile, userId: uuid.UUID, role: str,
                                 session: Session):
     lesson_query = (
         select(Lesson)
@@ -158,13 +158,13 @@ async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: Optional[Upload
                         ),
                         # New assignment ends during existing assignment
                         and_(
-                            Assignment.start_date < assignment.due_date,
-                            Assignment.due_date >= assignment.due_date
+                            Assignment.start_date < assignment.end_date,
+                            Assignment.due_date >= assignment.end_date
                         ),
                         # New assignment completely contains existing assignment
                         and_(
                             Assignment.start_date >= assignment.start_date,
-                            Assignment.due_date <= assignment.due_date
+                            Assignment.due_date <= assignment.end_date
                         )
                     )
                 )
@@ -178,18 +178,23 @@ async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: Optional[Upload
                 )
 
     pdf_filename = None
-    if pdf and pdf.filename:
-        try:
-            pdf_filename = await process_and_save_pdf(pdf, "assignments", assignment.title)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
+    try:
+        pdf_filename = await process_and_save_pdf(pdf, "assignments", assignment.title)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
+
+    if not pdf_filename:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to save PDF file."
+        )
 
     new_assignment = Assignment(
         title=assignment.title.strip(),
         start_date=assignment.start_date,
-        end_date=assignment.end_date,
+        due_date=assignment.end_date,
         lesson_id=assignment.lesson_id,
         pdf_name=pdf_filename,
         is_delete=False
@@ -218,7 +223,8 @@ async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: Optional[Upload
     }
 
 
-def assignmentUpdate(assignment: AssignmentUpdate, userId: uuid.UUID, role: str, session: Session):
+async def assignmentUpdate(assignment: AssignmentUpdate, pdf: Optional[UploadFile], userId: uuid.UUID, role: str,
+                           session: Session):
     find_assignment_query = (
         select(Assignment)
         .where(Assignment.id == assignment.id, Assignment.is_delete == False)
@@ -255,7 +261,7 @@ def assignmentUpdate(assignment: AssignmentUpdate, userId: uuid.UUID, role: str,
         .where(
             Assignment.lesson_id == current_assignment.lesson_id,
             Assignment.id != assignment.id,
-            Assignment.title.ilike(f"%{assignment.title.strip()}%"),
+            func.lower(func.trim(Assignment.title)) == assignment.title.strip().lower(),
             Assignment.is_delete == False
         )
     )
@@ -264,7 +270,7 @@ def assignmentUpdate(assignment: AssignmentUpdate, userId: uuid.UUID, role: str,
     if existing_title:
         raise HTTPException(
             status_code=400,
-            detail=f"An assignment with similar title already exists for this lesson."
+            detail=f"An assignment with the title '{assignment.title}' already exists for this lesson."
         )
 
     current_assignment.title = assignment.title.strip()
@@ -294,9 +300,6 @@ def assignmentUpdate(assignment: AssignmentUpdate, userId: uuid.UUID, role: str,
 
         current_assignment.lesson_id = assignment.lesson_id
 
-    start_date = assignment.start_date
-    end_date = assignment.end_date
-
     lesson_for_conflict_check = new_lesson if new_lesson else current_lesson
 
     if lesson_for_conflict_check.class_id:
@@ -312,26 +315,30 @@ def assignmentUpdate(assignment: AssignmentUpdate, userId: uuid.UUID, role: str,
         class_lesson_ids = [l.id for l in class_lessons]
 
         if class_lesson_ids:
+            check_start_date = assignment.start_date if assignment.start_date is not None else current_assignment.start_date
+            check_due_date = assignment.end_date if assignment.end_date is not None else current_assignment.due_date
+
             time_conflict_query = (
                 select(Assignment)
                 .where(
                     Assignment.lesson_id.in_(class_lesson_ids),
+                    Assignment.id != assignment.id,  # Exclude current assignment
                     Assignment.is_delete == False,
                     or_(
                         # New assignment starts during existing assignment
                         and_(
-                            Assignment.start_date <= assignment.start_date,
-                            Assignment.due_date > assignment.start_date
+                            Assignment.start_date <= check_start_date,
+                            Assignment.due_date > check_start_date
                         ),
                         # New assignment ends during existing assignment
                         and_(
-                            Assignment.start_date < assignment.due_date,
-                            Assignment.due_date >= assignment.due_date
+                            Assignment.start_date < check_due_date,
+                            Assignment.due_date >= check_due_date
                         ),
                         # New assignment completely contains existing assignment
                         and_(
-                            Assignment.start_date >= assignment.start_date,
-                            Assignment.due_date <= assignment.due_date
+                            Assignment.start_date >= check_start_date,
+                            Assignment.due_date <= check_due_date
                         )
                     )
                 )
@@ -347,7 +354,23 @@ def assignmentUpdate(assignment: AssignmentUpdate, userId: uuid.UUID, role: str,
     if assignment.start_date is not None:
         current_assignment.start_date = assignment.start_date
     if assignment.end_date is not None:
-        current_assignment.end_date = assignment.end_date
+        current_assignment.due_date = assignment.end_date
+
+    old_pdf_filename = current_assignment.pdf_name
+    if pdf is not None:
+        try:
+            pdf_filename = await process_and_save_pdf(pdf, "assignments", assignment.title)
+            current_assignment.pdf_name = pdf_filename
+
+            # Clean up old PDF after successful upload
+            if old_pdf_filename:
+                old_pdf_path = settings.UPLOAD_DIR_PDF / "assignments" / old_pdf_filename
+                cleanup_pdf(old_pdf_path)
+
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
 
     session.add(current_assignment)
 
@@ -355,6 +378,9 @@ def assignmentUpdate(assignment: AssignmentUpdate, userId: uuid.UUID, role: str,
         session.commit()
     except IntegrityError as e:
         session.rollback()
+        if pdf is not None and current_assignment.pdf_name != old_pdf_filename:
+            new_pdf_path = settings.UPLOAD_DIR_PDF / "assignments" / current_assignment.pdf_name
+            cleanup_pdf(new_pdf_path)
         raise HTTPException(
             status_code=400,
             detail="Database integrity error. Please check your data."

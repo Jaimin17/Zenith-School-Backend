@@ -52,9 +52,112 @@ async def saveAssignments(
         start_date: date = Form(...),
         end_date: date = Form(...),
         lesson_id: str = Form(...),
+        pdf: Union[UploadFile, str] = File(...)
+):
+    user, role = current_user
+
+    if not title or len(title.strip()) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Title is required and must be at least 2 characters long."
+        )
+
+    if not start_date or not isinstance(start_date, date):
+        raise HTTPException(
+            status_code=400,
+            detail="Start date is required."
+        )
+
+    if not end_date or not isinstance(end_date, date):
+        raise HTTPException(
+            status_code=400,
+            detail="End date is required."
+        )
+
+    if start_date >= end_date:
+        raise HTTPException(
+            status_code=400,
+            detail="Assignment start date must be before end date."
+        )
+
+    if start_date < date.today():
+        raise HTTPException(
+            status_code=400,
+            detail="Assignment start date cannot be in the past."
+        )
+
+    if not lesson_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Lesson id is required."
+        )
+
+    try:
+        lesson_uuid = uuid.UUID(lesson_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Lesson UUID format: {str(e)}"
+        )
+
+    processed_pdf: Optional[UploadFile] = None
+    if pdf is None or isinstance(pdf, str):
+        raise HTTPException(
+            status_code=400,
+            detail="PDF file is required for assignment creation."
+        )
+
+    if not hasattr(pdf, 'filename') or not hasattr(pdf, 'file') or not pdf.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="PDF file is required for assignment creation."
+        )
+
+    processed_pdf = pdf
+
+    assignment = AssignmentSave(
+        title=title.strip(),
+        start_date=start_date,
+        end_date=end_date,
+        lesson_id=lesson_uuid
+    )
+
+    result = await assignmentSaveWithPdf(assignment, processed_pdf, user.id, role, session)
+    return result
+
+
+@router.put("/update", response_model=SaveResponse)
+async def updateAssignment(
+        current_user: TeacherOrAdminUser,
+        session: SessionDep,
+        id: str = Form(...),
+        title: str = Form(...),
+        start_date: date = Form(...),
+        end_date: date = Form(...),
+        lesson_id: str = Form(...),
         pdf: Union[UploadFile, str, None] = File(None)
 ):
     user, role = current_user
+
+    if not id:
+        raise HTTPException(
+            status_code=400,
+            detail="Assignment ID is required for updating."
+        )
+
+    try:
+        assignmentId = uuid.UUID(id.strip())
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid assignment UUID format: {str(e)}"
+        )
+
+    if not assignmentId:
+        raise HTTPException(
+            status_code=400,
+            detail="Assignment ID is required for updating."
+        )
 
     if not title or len(title.strip()) < 2:
         raise HTTPException(
@@ -104,65 +207,18 @@ async def saveAssignments(
     if pdf is not None and not isinstance(pdf, str):
         if hasattr(pdf, 'filename') and hasattr(pdf, 'file') and pdf.filename:
             processed_pdf = pdf
+    elif isinstance(pdf, str) and pdf.strip():
+        processed_pdf = None
 
-    assignment = AssignmentSave(
+    assignment = AssignmentUpdate(
+        id=assignmentId,
         title=title.strip(),
         start_date=start_date,
         end_date=end_date,
         lesson_id=lesson_uuid
     )
 
-    result = await assignmentSaveWithPdf(assignment, processed_pdf, user.id, role, session)
-    return result
-
-
-@router.put("/update", response_model=SaveResponse)
-def updateAssignment(current_user: TeacherOrAdminUser, assignment: AssignmentUpdate, session: SessionDep):
-    user, role = current_user
-
-    if not assignment.id:
-        raise HTTPException(
-            status_code=400,
-            detail="Assignment ID is required for updating."
-        )
-
-    if not assignment.title or len(assignment.title.strip()) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="Title is required and must be at least 2 characters long."
-        )
-
-    if not assignment.start_date or not isinstance(assignment.start_date, date):
-        raise HTTPException(
-            status_code=400,
-            detail="Start date is required."
-        )
-
-    if not assignment.end_date or not isinstance(assignment.end_date, date):
-        raise HTTPException(
-            status_code=400,
-            detail="End date is required."
-        )
-
-    if assignment.start_date >= assignment.end_date:
-        raise HTTPException(
-            status_code=400,
-            detail="Assignment start date must be before end date."
-        )
-
-    if assignment.start_date < date.today():
-        raise HTTPException(
-            status_code=400,
-            detail="Assignment start date cannot be in the past."
-        )
-
-    if not assignment.lesson_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Lesson id is required."
-        )
-
-    result = assignmentUpdate(assignment, user.id, role, session)
+    result = await assignmentUpdate(assignment, processed_pdf, user.id, role, session)
     return result
 
 
