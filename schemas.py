@@ -181,6 +181,7 @@ class AnnouncementBase(SQLModel):
     title: str
     description: str
     announcement_date: date
+    attachment: str
 
 
 class ExamBase(SQLModel):
@@ -385,7 +386,7 @@ class AnnouncementRead(AnnouncementBase):
 class AnnouncementSave(SQLModel):
     title: str
     description: str
-    announcement_date: Optional[date]
+    announcement_date: date
     class_id: Optional[uuid.UUID]
 
 

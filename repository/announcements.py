@@ -2,11 +2,12 @@ import uuid
 from datetime import date
 from typing import Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from psycopg import IntegrityError
 from sqlalchemy import Select, func
 from sqlmodel import Session, select
 
+from core.FileStorage import process_and_save_pdf, cleanup_pdf
 from core.config import settings
 from models import Announcement, Class, Student
 from schemas import AnnouncementSave, AnnouncementUpdate
@@ -105,23 +106,33 @@ def getAllAnnouncementsByParentAndIsDeleteFalse(parentId, session, search, page)
     return announcements
 
 
-def announcementSave(announcement: AnnouncementSave, session: Session):
+async def announcementSave(announcement: AnnouncementSave, pdf: Optional[UploadFile], userId: uuid.UUID, role: str,
+                           session: Session):
     title = announcement.title.strip()
     description = announcement.description.strip()
+    announcement_date = announcement.announcement_date
 
-    if len(title) < 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Title should be at least 3 characters long."
+    related_class: Optional[Class] = None
+    if announcement.class_id:
+        class_query = select(Class).where(
+            Class.id == announcement.class_id,
+            Class.is_delete == False
         )
+        related_class = session.exec(class_query).first()
 
-    if len(description) < 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Description should be at least 10 characters long."
-        )
+        if not related_class:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No class found with ID: {announcement.class_id}"
+            )
 
-    announcement_date = announcement.announcement_date if announcement.announcement_date else date.today()
+        # Check teacher authorization - teacher can only create announcements for their supervised class
+        if role == "teacher":
+            if related_class.supervisor_id != userId:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You are not authorized to create announcements for this class. You can only create announcements for classes you supervise."
+                )
 
     search_duplicate_query = (
         select(Announcement)
@@ -131,35 +142,36 @@ def announcementSave(announcement: AnnouncementSave, session: Session):
             Announcement.is_delete == False
         )
     )
+
+    if announcement.class_id:
+        search_duplicate_query = search_duplicate_query.where(
+            Announcement.class_id == announcement.class_id
+        )
+
     duplicate_announcement: Optional[Announcement] = session.exec(search_duplicate_query).first()
 
     if duplicate_announcement:
+        scope = f"class '{related_class.name}'" if related_class else "all classes"
         raise HTTPException(
-            status_code=400,
-            detail=f"An announcement with similar title already exists for {announcement_date}."
+            status_code=409,
+            detail=f"An announcement with the title '{title}' already exists for {announcement_date} in {scope}."
         )
 
-    class_id = None
-    if announcement.class_id is not None:
-        class_query = (
-            select(Class)
-            .where(Class.id == announcement.class_id, Class.is_delete == False)
-        )
-        selected_class = session.exec(class_query).first()
-
-        if not selected_class:
-            raise HTTPException(
-                status_code=404,
-                detail="Class not found or has been deleted."
-            )
-
-        class_id = selected_class.id
+    pdf_filename: Optional[str] = None
+    if pdf and pdf.filename:
+        try:
+            pdf_filename = await process_and_save_pdf(pdf, "announcements", title)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
 
     new_announcement = Announcement(
         title=title,
         description=description,
         announcement_date=announcement_date,
-        class_id=class_id,
+        class_id=announcement.class_id,
+        attachment=pdf_filename,
         is_delete=False
     )
 
@@ -170,6 +182,9 @@ def announcementSave(announcement: AnnouncementSave, session: Session):
         session.commit()
     except IntegrityError as e:
         session.rollback()
+        if pdf_filename:
+            pdf_path = settings.UPLOAD_DIR_PDF / "announcements" / pdf_filename
+            cleanup_pdf(pdf_path)
         raise HTTPException(
             status_code=400,
             detail="Database integrity error. Please check your data."
@@ -177,9 +192,14 @@ def announcementSave(announcement: AnnouncementSave, session: Session):
 
     session.refresh(new_announcement)
 
+    if announcement.class_id and related_class:
+        audience = f"class '{related_class.name}'"
+    else:
+        audience = "all classes"
+
     return {
         "id": str(new_announcement.id),
-        "message": "announcement created successfully"
+        "message": f"Announcement created successfully for {audience}"
     }
 
 
@@ -268,6 +288,7 @@ def announcementUpdate(announcement: AnnouncementUpdate, session: Session):
         "id": str(current_announcement.id),
         "message": "Announcement updated successfully"
     }
+
 
 def AnnouncementSoftDelete(id: uuid.UUID, session: Session):
     current_announcement_query = (

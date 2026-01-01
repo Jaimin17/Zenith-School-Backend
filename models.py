@@ -133,6 +133,7 @@ class Announcement(SQLModel, table=True):
     title: str = Field(nullable=False)
     description: str = Field(nullable=False)
     announcement_date: date = Field(default_factory=date.today, nullable=False)
+    attachment: Optional[str] = Field(default=None)
     is_delete: bool = Field(default=False, nullable=False)
 
     class_id: Optional[uuid.UUID] = Field(default=None, foreign_key="class.id")
