@@ -181,7 +181,7 @@ class AnnouncementBase(SQLModel):
     title: str
     description: str
     announcement_date: date
-    attachment: str
+    attachment: Optional[str]
 
 
 class ExamBase(SQLModel):

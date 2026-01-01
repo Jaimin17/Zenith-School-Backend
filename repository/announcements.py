@@ -14,7 +14,7 @@ from schemas import AnnouncementSave, AnnouncementUpdate
 
 
 def addSearchOption(query: Select, search: str):
-    if search:
+    if search is not None:
         search_pattern = f"%{search.lower()}%"
         query = query.where(
             (
@@ -203,7 +203,8 @@ async def announcementSave(announcement: AnnouncementSave, pdf: Optional[UploadF
     }
 
 
-def announcementUpdate(announcement: AnnouncementUpdate, session: Session):
+async def announcementUpdate(announcement: AnnouncementUpdate, pdf: Optional[UploadFile], userId: uuid.UUID, role: str,
+                             session: Session):
     announcement_query = (
         select(Announcement)
         .where(Announcement.id == announcement.id, Announcement.is_delete == False)
@@ -262,10 +263,33 @@ def announcementUpdate(announcement: AnnouncementUpdate, session: Session):
         if not selected_class:
             raise HTTPException(
                 status_code=404,
-                detail="Class not found or has been deleted."
+                detail=f"No class found with ID: {announcement.class_id}"
             )
 
+        if role == "teacher":
+            if selected_class.supervisor_id != userId:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You are not authorized to update announcements for this class. You can only create announcements for classes you supervise."
+                )
+
         class_id = selected_class.id
+
+    old_pdf_filename = current_announcement.attachment
+    if pdf is not None:
+        try:
+            pdf_filename = await process_and_save_pdf(pdf, "announcements", title)
+            current_announcement.attachment = pdf_filename
+
+            # Clean up old PDF after successful upload
+            if old_pdf_filename:
+                old_pdf_path = settings.UPLOAD_DIR_PDF / "announcements" / old_pdf_filename
+                cleanup_pdf(old_pdf_path)
+
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
 
     current_announcement.title = title
     current_announcement.description = description
@@ -278,6 +302,9 @@ def announcementUpdate(announcement: AnnouncementUpdate, session: Session):
         session.commit()
     except IntegrityError as e:
         session.rollback()
+        if pdf is not None and current_announcement.attachment != old_pdf_filename:
+            new_pdf_path = settings.UPLOAD_DIR_PDF / "announcements" / current_announcement.attachment
+            cleanup_pdf(new_pdf_path)
         raise HTTPException(
             status_code=400,
             detail="Database integrity error. Please check your data."

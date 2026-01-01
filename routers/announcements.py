@@ -100,7 +100,7 @@ async def saveAnnouncement(
 
 
 @router.put("/update", response_model=SaveResponse)
-def updateAnnouncement(
+async def updateAnnouncement(
         current_user: TeacherOrAdminUser,
         session: SessionDep,
         id: str = Form(...),
@@ -176,7 +176,7 @@ def updateAnnouncement(
         class_id=class_uuid,
     )
 
-    response = announcementUpdate(announcement, session)
+    response = await announcementUpdate(announcement, processed_pdf, user.id, role, session)
     return response
 
 
