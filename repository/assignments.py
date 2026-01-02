@@ -4,6 +4,7 @@ from typing import Optional, List
 from fastapi import HTTPException, UploadFile
 from psycopg import IntegrityError
 from sqlalchemy import Select, func
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, or_, and_
 
 from core.FileStorage import cleanup_pdf, process_and_save_pdf
@@ -34,6 +35,24 @@ def getAllAssignmentsIsDeleteFalse(session: Session, search: str, page: int):
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_exams = session.exec(query).unique().all()
     return all_exams
+
+
+def getAssignmentById(session: Session, assignmentId: uuid.UUID):
+    query = (
+        select(Assignment)
+        .options(
+            # Eager load relationships to avoid lazy loading issues
+            selectinload(Assignment.lesson).selectinload(Lesson.teacher),
+            selectinload(Assignment.lesson).selectinload(Lesson.related_class).selectinload(Class.students)
+        )
+        .where(
+            Assignment.id == assignmentId,
+            Assignment.is_delete == False,
+        )
+    )
+
+    assignment_detail = session.exec(query).first()
+    return assignment_detail
 
 
 def getAllAssignmentsOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int):

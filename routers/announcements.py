@@ -4,9 +4,10 @@ from typing import List, Union, Optional
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 from deps import CurrentUser, AllUser, AdminUser, TeacherOrAdminUser
+from models import Announcement
 from repository.announcements import getAllAnnouncementsIsDeleteFalse, getAllAnnouncementsByTeacherAndIsDeleteFalse, \
     getAllAnnouncementsByStudentAndIsDeleteFalse, getAllAnnouncementsByParentAndIsDeleteFalse, announcementSave, \
-    announcementUpdate, AnnouncementSoftDelete
+    announcementUpdate, AnnouncementSoftDelete, getAnnouncementById
 from schemas import AnnouncementRead, SaveResponse, AnnouncementSave, AnnouncementUpdate
 
 router = APIRouter(
@@ -26,6 +27,81 @@ def getAllAnnouncements(current_user: AllUser, session: SessionDep, search: str 
     else:
         announcements = getAllAnnouncementsByParentAndIsDeleteFalse(user.id, session, search, page)
     return announcements
+
+
+@router.get("/getById/{announcementId}", response_model=AnnouncementRead)
+def getById(current_user: AllUser, session: SessionDep, announcementId: uuid.UUID):
+    user, role = current_user
+
+    announcement_detail: Optional[Announcement] = getAnnouncementById(session, announcementId)
+
+    if not announcement_detail:
+        raise HTTPException(
+            status_code=404,
+            detail="Announcement not found with provided ID."
+        )
+
+    if announcement_detail.class_id is None:
+        return announcement_detail
+
+    if role.lower() == "admin":
+        return announcement_detail
+
+    elif role.lower() == "teacher":
+        if announcement_detail.related_class.supervisor_id != user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to access this announcement."
+            )
+        return announcement_detail
+
+    elif role.lower() == "student":
+        if not announcement_detail.related_class:
+            raise HTTPException(
+                status_code=500,
+                detail="Announcement class data is missing."
+            )
+
+        class_students = [s.id for s in announcement_detail.related_class.students if not s.is_delete]
+        if user.id not in class_students:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to access this announcement."
+            )
+        return announcement_detail
+
+    elif role.lower() == "parent":
+        if not user.students:
+            raise HTTPException(
+                status_code=403,
+                detail="No students associated with your account."
+            )
+
+        if not announcement_detail.related_class:
+            raise HTTPException(
+                status_code=500,
+                detail="Announcement class data is missing."
+            )
+
+        class_student_ids = [s.id for s in announcement_detail.related_class.students if not s.is_delete]
+        parent_student_ids = [s.id for s in user.students if not s.is_delete]
+
+        # Check if any of parent's students are in the class
+        has_access = any(student_id in class_student_ids for student_id in parent_student_ids)
+
+        if not has_access:
+            raise HTTPException(
+                status_code=403,
+                detail="None of your children have access to this announcement."
+            )
+
+        return announcement_detail
+
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid user role."
+        )
 
 
 @router.post("/save", response_model=SaveResponse)
@@ -58,7 +134,7 @@ async def saveAnnouncement(
             detail="Announcement date cannot be in the past."
         )
 
-    if role == "Admin":
+    if role == "admin":
         class_uuid: Optional[uuid.UUID] = None
         if class_id and class_id.strip():
             try:
@@ -109,7 +185,7 @@ async def updateAnnouncement(
         announcement_date: date = Form(...),
         class_id: Optional[str] = Form(None),
         pdf: Union[UploadFile, str, None] = File(None)
-    ):
+):
     user, role = current_user
 
     try:

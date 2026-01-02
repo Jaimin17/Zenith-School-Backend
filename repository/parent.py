@@ -46,6 +46,25 @@ def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 
     return active_parents
 
 
+def getParentById(parentId: uuid.UUID, session: Session):
+    query = (
+        select(Parent)
+        .where(
+            Parent.id == parentId,
+            Parent.is_delete == False
+        )
+    )
+
+    parent_detail: Optional[Parent] = session.exec(query).first()
+
+    if not parent_detail:
+        raise HTTPException(
+            status_code=404,
+            detail="Parent not found with provided ID."
+        )
+    return parent_detail
+
+
 def parentSave(parent: ParentSave, session: Session):
     username = parent.username.strip().lower()
     first_name = parent.first_name.strip()

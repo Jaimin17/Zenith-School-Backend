@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import HTTPException
 from psycopg import IntegrityError
 from sqlalchemy import Select, func
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, or_, and_
 
 from core.config import settings
@@ -43,6 +44,23 @@ def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_lessons = session.exec(query).unique().all()
     return all_lessons
+
+
+def getLessonById(lessonId: uuid.UUID, session: Session):
+    query = (
+        select(Lesson)
+        .options(
+            selectinload(Lesson.related_class).selectinload(Class.students),
+            selectinload(Lesson.teacher)
+        )
+        .where(
+            Lesson.id == lessonId,
+            Lesson.is_delete == False
+        )
+    )
+
+    lesson_detail: Optional[Lesson] = session.exec(query).first()
+    return lesson_detail
 
 
 def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int):

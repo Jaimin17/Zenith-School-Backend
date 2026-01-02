@@ -387,7 +387,7 @@ class AnnouncementSave(SQLModel):
     title: str
     description: str
     announcement_date: date
-    class_id: Optional[uuid.UUID]
+    class_id: Optional[uuid.UUID] = None
 
 
 class AnnouncementUpdate(AnnouncementSave):

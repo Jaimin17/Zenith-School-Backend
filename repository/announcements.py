@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import HTTPException, UploadFile
 from psycopg import IntegrityError
 from sqlalchemy import Select, func
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
 from core.FileStorage import process_and_save_pdf, cleanup_pdf
@@ -42,6 +43,23 @@ def getAllAnnouncementsIsDeleteFalse(session: Session, search: str, page: int):
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     announcements = session.exec(query).unique().all()
     return announcements
+
+
+def getAnnouncementById(session: Session, announcementId: uuid.UUID):
+    query = (
+        select(Announcement)
+        .options(
+            selectinload(Announcement.related_class).selectinload(Class.students),
+            selectinload(Announcement.related_class).selectinload(Class.supervisor)
+        )
+        .where(
+            Announcement.id == announcementId,
+            Announcement.is_delete == False
+        )
+    )
+
+    announcement_detail = session.exec(query).first()
+    return announcement_detail
 
 
 def getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, search, page):

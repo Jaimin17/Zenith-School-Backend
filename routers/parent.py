@@ -2,8 +2,9 @@ import uuid
 from typing import List
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
-from deps import CurrentUser, AdminUser, TeacherOrAdminUser
-from repository.parent import getAllParentIsDeleteFalse, countParent, parentSave, parentUpdate, parentSoftDelete
+from deps import CurrentUser, AdminUser, TeacherOrAdminUser, AllUser
+from repository.parent import getAllParentIsDeleteFalse, countParent, parentSave, parentUpdate, parentSoftDelete, \
+    getParentById
 from schemas import ParentRead, SaveResponse, ParentSave, ParentUpdate
 
 router = APIRouter(
@@ -20,6 +21,19 @@ def register(current_user: AdminUser, session: SessionDep):
 def getAllParent(current_user: TeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
     all_parents = getAllParentIsDeleteFalse(session, search, page)
     return all_parents
+
+
+@router.get("/getById/{parentId}", response_model=ParentRead)
+def getById(current_user: AllUser, parentId: uuid.UUID, session: SessionDep):
+    parent_detail = getParentById(parentId, session)
+
+    if not parent_detail:
+        raise HTTPException(
+            status_code=404,
+            detail="Parent not found with provided ID."
+        )
+
+    return parent_detail
 
 
 @router.post("/save", response_model=SaveResponse)

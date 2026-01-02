@@ -6,7 +6,7 @@ from deps import CurrentUser, AllUser, StudentOrTeacherOrAdminUser, AdminUser
 from models import Day
 from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIsDeleteFalse, \
     getAllLessonOfClassIsDeleteFalse, getAllLessonOfParentIsDeleteFalse, countAllLessonOfTeacher, \
-    countAllLessonOfStudent, lessonSave, lessonUpdate, lessonSoftDelete
+    countAllLessonOfStudent, lessonSave, lessonUpdate, lessonSoftDelete, getLessonById
 from schemas import LessonRead, StudentRead, SaveResponse, LessonSave, LessonUpdate, LessonDeleteResponse
 
 router = APIRouter(
@@ -26,6 +26,82 @@ def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None,
     else:
         all_lessons = getAllLessonOfParentIsDeleteFalse(user.id, session, search, page)
     return all_lessons
+
+
+@router.get("/getById/{lessonId}", response_model=LessonRead)
+def getById(lessonId: uuid.UUID, current_user: AllUser, session: SessionDep):
+    user, role = current_user
+
+    lesson_detail = getLessonById(lessonId, session)
+
+    if not lesson_detail:
+        raise HTTPException(
+            status_code=404,
+            detail="Lesson not found with provided ID."
+        )
+
+    if role.lower() == "admin":
+        return lesson_detail
+
+    elif role.lower() == "teacher":
+        if lesson_detail.teacher_id and lesson_detail.teacher_id == user.id:
+            return lesson_detail
+        elif lesson_detail.related_class and lesson_detail.related_class.supervisor_id == user.id:
+            return lesson_detail
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to access this Lesson."
+            )
+
+    elif role.lower() == "student":
+        if lesson_detail.related_class is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Lesson class data is missing."
+            )
+
+        class_students = [s.id for s in lesson_detail.related_class.students if not s.is_delete]
+        if user.id not in class_students:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to access this lesson."
+            )
+
+        return lesson_detail
+
+    elif role.lower() == "parent":
+        if lesson_detail.related_class is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Lesson class data is missing."
+            )
+
+        if not user.students:
+            raise HTTPException(
+                status_code=403,
+                detail="No students associated with your account."
+            )
+
+        class_student_ids = [s.id for s in lesson_detail.related_class.students if not s.is_delete]
+        parent_student_ids = [s.id for s in user.students if not s.is_delete]
+
+        # Check if any of parent's students are in the class
+        has_access = any(student_id in class_student_ids for student_id in parent_student_ids)
+
+        if not has_access:
+            raise HTTPException(
+                status_code=403,
+                detail="None of your children have access to this lesson."
+            )
+
+        return lesson_detail
+
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid user role."
+        )
 
 
 @router.get("/teacher/{teacherId}", response_model=List[LessonRead])
