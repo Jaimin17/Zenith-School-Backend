@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime, date, timezone
-from typing import List
+from typing import List, Optional
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AllUser, AdminUser
 from repository.events import getAllEventsIsDeleteFalse, getAllEventsByTeacherAndIsDeleteFalse, \
     getAllEventsByStudentAndIsDeleteFalse, getAllEventsByParentAndIsDeleteFalse, getAllEventsByDate, eventSave, \
-    eventUpdate, EventSoftDelete
+    eventUpdate, EventSoftDelete, getEventById
 from schemas import EventRead, EventBase, SaveResponse, EventSave, EventUpdate
 
 router = APIRouter(
@@ -26,6 +26,83 @@ def getAllEvents(current_user: AllUser, session: SessionDep, search: str = None,
     else:
         all_events = getAllEventsByParentAndIsDeleteFalse(user.id, session, search, page)
     return all_events
+
+
+@router.get("/getById/{eventId}", response_model=EventRead)
+def getById(eventId: uuid.UUID, current_user: AllUser, session: SessionDep):
+    user, role = current_user
+
+    event_detail = getEventById(session, eventId)
+
+    if not event_detail:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found with provided ID."
+        )
+
+    if not event_detail.class_id:
+        return event_detail
+
+    if role.lower() == "admin":
+        return event_detail
+
+    elif role.lower() == "teacher":
+        if event_detail.related_class and event_detail.related_class.supervisor_id == user.id:
+            return event_detail
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to access this Event."
+            )
+
+    elif role.lower() == "student":
+        if event_detail.related_class is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Event class data is missing."
+            )
+
+        class_students = [s.id for s in event_detail.related_class.students if not s.is_delete]
+        if user.id not in class_students:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to access this event."
+            )
+
+        return event_detail
+
+    elif role.lower() == "parent":
+        if event_detail.related_class is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Event class data is missing."
+            )
+
+        if not user.students:
+            raise HTTPException(
+                status_code=403,
+                detail="No students associated with your account."
+            )
+
+        class_student_ids = [s.id for s in event_detail.related_class.students if not s.is_delete]
+        parent_student_ids = [s.id for s in user.students if not s.is_delete]
+
+        # Check if any of parent's students are in the class
+        has_access = any(student_id in class_student_ids for student_id in parent_student_ids)
+
+        if not has_access:
+            raise HTTPException(
+                status_code=403,
+                detail="None of your children have access to this event."
+            )
+
+        return event_detail
+
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid user role."
+        )
 
 
 @router.get("/getAllByDate", response_model=List[EventBase])

@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import HTTPException
 from psycopg import IntegrityError
 from sqlalchemy import Select, func
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, or_, and_
 from datetime import datetime
 from core.config import settings
@@ -44,6 +45,22 @@ def getAllEventsByDate(session: Session, searchDate: date):
 
     events = session.exec(query).unique().all()
     return events
+
+
+def getEventById(session: Session, eventId: uuid.UUID):
+    query = (
+        select(Event)
+        .options(
+            selectinload(Event.related_class).selectinload(Class.students),
+        )
+        .where(
+            Event.id == eventId,
+            Event.is_delete == False
+        )
+    )
+
+    event_detail: Optional[Event] = session.exec(query).first()
+    return event_detail
 
 
 def getAllEventsIsDeleteFalse(session: Session, search: str, page: int):
