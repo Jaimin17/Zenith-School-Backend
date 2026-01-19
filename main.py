@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from sched import scheduler
 
 from fastapi import FastAPI
@@ -71,14 +72,15 @@ if settings.all_cors_origins:
         expose_headers=["*"],
     )
 
-if settings.UPLOAD_DIR_DP.exists():
+upload_images_path = Path(settings.UPLOAD_DIR_DP).absolute()
+
+if upload_images_path.exists():
     app.mount(
         "/uploads/images",
-        StaticFiles(directory=str(settings.UPLOAD_DIR_DP)),
+        StaticFiles(directory=str(upload_images_path)),
         name="images"
     )
-    print(f"✓ Static files mounted at /uploads/images")
-    print(f"  Example: http://localhost:8000/uploads/images/teachers/filename.jpg")
+    print(f"✓ Mounted: {upload_images_path}")
 
 # Mount PDFs directory
 if settings.UPLOAD_DIR_PDF.exists():
