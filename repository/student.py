@@ -8,7 +8,7 @@ from sqlalchemy import func, Select
 
 from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
-from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance
+from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance, UserSex
 from schemas import StudentSave, StudentUpdateBase
 
 
@@ -25,9 +25,28 @@ def addSearchOption(query: Select, search: str):
 
 
 def countStudent(session: Session):
-    return session.exec(
-        select(func.count()).select_from(Student).where(Student.is_delete == False)
-    ).first()
+    count_boys_query = (
+        select(func.count()).select_from(Student).where(
+            Student.is_delete == False,
+            Student.sex == UserSex.MALE,
+        )
+    )
+
+    count_boys = session.exec(count_boys_query).first()
+
+    count_girls_query = (
+        select(func.count()).select_from(Student).where(
+            Student.is_delete == False,
+            Student.sex == UserSex.FEMALE,
+        )
+    )
+
+    count_girls = session.exec(count_girls_query).first()
+
+    return {
+        "boys": count_boys,
+        "girls": count_girls
+    }
 
 
 def getStudentByIdAndIsDeleteFalse(studentId: uuid.UUID, session: Session):
@@ -84,6 +103,27 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
         )
         .where(
             Lesson.teacher_id == teacherId,
+            Student.is_delete == False,
+        )
+        .distinct()
+    )
+
+    query = query.order_by(Student.username)
+
+    query = addSearchOption(query, search)
+
+    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
+    results = session.exec(query).all()
+    return results
+
+
+def getAllStudentsOfParentAndIsDeleteFalse(session: Session, parentId: uuid.UUID, search: str, page: int):
+    offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    query = (
+        select(Student)
+        .where(
+            Student.parent_id == parentId,
             Student.is_delete == False,
         )
         .distinct()

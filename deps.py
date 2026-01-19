@@ -19,6 +19,7 @@ reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/auth/access-token"
 )
 
+
 class UserRole(str, Enum):
     ADMIN = "admin"
     PARENT = "parent"
@@ -26,8 +27,8 @@ class UserRole(str, Enum):
     STUDENT = "student"
 
 
-
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
+
 
 def get_current_user(session: SessionDep, token: TokenDep) -> tuple[Union[Admin, Parent, Teacher, Student], str]:
     """
@@ -69,6 +70,7 @@ def get_current_user(session: SessionDep, token: TokenDep) -> tuple[Union[Admin,
 
     return user, role
 
+
 CurrentUser = Annotated[tuple[Union[Admin, Parent, Teacher, Student], str], Depends(get_current_user)]
 
 
@@ -86,7 +88,9 @@ def require_roles(*allowed_roles: UserRole):
                 detail=f"Access denied. Required roles: {', '.join([r.value for r in allowed_roles])}"
             )
         return current_user
+
     return role_checker
+
 
 # Pre-defined type aliases for common role combinations
 AdminUser = Annotated[
@@ -102,6 +106,11 @@ StudentOrTeacherOrAdminUser = Annotated[
 TeacherOrAdminUser = Annotated[
     tuple[Union[Admin, Parent, Teacher, Student], str],
     Depends(require_roles(UserRole.ADMIN, UserRole.TEACHER))
+]
+
+ParentOrTeacherOrAdminUser = Annotated[
+    tuple[Union[Admin, Parent, Teacher, Student], str],
+    Depends(require_roles(UserRole.ADMIN, UserRole.TEACHER, UserRole.PARENT))
 ]
 
 ParentUser = Annotated[

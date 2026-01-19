@@ -2,9 +2,10 @@ import uuid
 from typing import List
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
-from deps import CurrentUser, TeacherOrAdminUser, AdminUser
+from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentUser
 from repository.classes import getAllClassesIsDeleteFalse, getAllClassOfTeacherAndIsDeleteFalse, findClassById, \
-    classSave, ClassUpdate, ClassSoftDeleteWithLessonsStudentsEventsAnnoucements, countAllClassOfTheTeacher
+    classSave, ClassUpdate, ClassSoftDeleteWithLessonsStudentsEventsAnnoucements, countAllClassOfTheTeacher, \
+    getClassOfStudentAndIsDeleteFalse
 from schemas import ClassRead, SaveResponse, ClassSave, ClassUpdateBase, ClassDeleteResponse
 
 router = APIRouter(
@@ -20,6 +21,13 @@ def getAllClasses(current_user: TeacherOrAdminUser, session: SessionDep, search:
     else:
         all_classes = getAllClassOfTeacherAndIsDeleteFalse(user.id, session, search, page)
     return all_classes
+
+
+@router.get("/getStudentClass", response_model=ClassRead)
+def getStudentClass(current_user: StudentUser, session: SessionDep):
+    user, role = current_user
+    student_class = getClassOfStudentAndIsDeleteFalse(user.id, session)
+    return student_class
 
 
 @router.get("/countByTeacher/{teacherId}", response_model=int)

@@ -9,8 +9,9 @@ from deps import CurrentUser, TeacherOrAdminUser, AdminUser
 from core.database import SessionDep
 from models import UserSex
 from repository.teacher import getAllTeachersIsDeleteFalse, getAllTeachersOfClassAndIsDeleteFalse, countTeacher, \
-    findTeacherById, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject, teacherSaveWithImage
-from schemas import TeacherRead, SaveResponse, TeacherDeleteResponse
+    findTeacherById, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject, teacherSaveWithImage, \
+    getTotalTeachersCount
+from schemas import TeacherRead, SaveResponse, TeacherDeleteResponse, PaginatedTeacherResponse
 
 router = APIRouter(
     prefix="/teacher",
@@ -22,10 +23,23 @@ def register(current_user: AdminUser, session: SessionDep):
     return countTeacher(session)
 
 
-@router.get("/getAll", response_model=List[TeacherRead])
+@router.get("/getAll", response_model=PaginatedTeacherResponse)
 def getAllTeachers(current_user: TeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
     all_teachers = getAllTeachersIsDeleteFalse(session, search, page)
-    return all_teachers
+
+    total_count = getTotalTeachersCount(session, search)
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+    has_next = page < total_pages
+    has_prev = page > 1
+    return PaginatedTeacherResponse(
+        data=all_teachers,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=has_next,
+        has_prev=has_prev
+    )
 
 
 @router.get("/{classId}", response_model=List[TeacherRead])

@@ -2,12 +2,15 @@ import uuid
 from typing import List
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
-from deps import CurrentUser, AllUser, StudentOrTeacherOrAdminUser, AdminUser
+from deps import CurrentUser, AllUser, StudentOrTeacherOrAdminUser, AdminUser, ParentUser
 from models import Day
 from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIsDeleteFalse, \
     getAllLessonOfClassIsDeleteFalse, getAllLessonOfParentIsDeleteFalse, countAllLessonOfTeacher, \
-    countAllLessonOfStudent, lessonSave, lessonUpdate, lessonSoftDelete, getLessonById
-from schemas import LessonRead, StudentRead, SaveResponse, LessonSave, LessonUpdate, LessonDeleteResponse
+    countAllLessonOfStudent, lessonSave, lessonUpdate, lessonSoftDelete, getLessonById, \
+    getAllLessonOfCurrentWeekIsDeleteFalse, getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse, \
+    getAllLessonOfClassOfCurrentWeekIsDeleteFalse, getAllLessonOfStudentOfCurrentWeekIsDeleteFalse
+from schemas import LessonRead, SaveResponse, LessonSave, LessonUpdate, LessonDeleteResponse
+from datetime import datetime, date, timedelta
 
 router = APIRouter(
     prefix="/lesson",
@@ -25,6 +28,51 @@ def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None,
         all_lessons = getAllLessonOfClassIsDeleteFalse(user.class_id, session, search, page)
     else:
         all_lessons = getAllLessonOfParentIsDeleteFalse(user.id, session, search, page)
+    return all_lessons
+
+
+@router.get("/getAllOfCurrentWeek", response_model=List[LessonRead])
+def getAllOfCurrentWeek(current_user: StudentOrTeacherOrAdminUser, session: SessionDep):
+    user, role = current_user
+
+    today: date = date.today()
+
+    days_since_monday: int = today.weekday()
+    days_until_friday: int = 4 - today.weekday()
+
+    monday: date = today - timedelta(days=days_since_monday)
+    friday: date = today + timedelta(days=days_until_friday)
+
+    week_start: datetime = datetime.combine(monday, datetime.min.time())
+    week_end: datetime = datetime.combine(friday, datetime.max.time())
+
+    if role == "admin":
+        all_lessons = getAllLessonOfCurrentWeekIsDeleteFalse(session, week_start, week_end)
+    elif role == "teacher":
+        all_lessons = getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse(user.id, session, week_start, week_end)
+    else:
+        all_lessons = getAllLessonOfClassOfCurrentWeekIsDeleteFalse(user.class_id, session, week_start, week_end)
+
+    return all_lessons
+
+
+@router.get("/getLessonForStudent/{studentId}", response_model=List[LessonRead])
+def getLessonForStudent(studentId: uuid.UUID, current_user: ParentUser, session: SessionDep):
+    user, role = current_user
+
+    today: date = date.today()
+
+    days_since_monday: int = today.weekday()
+    days_until_friday: int = 4 - today.weekday()
+
+    monday: date = today - timedelta(days=days_since_monday)
+    friday: date = today + timedelta(days=days_until_friday)
+
+    week_start: datetime = datetime.combine(monday, datetime.min.time())
+    week_end: datetime = datetime.combine(friday, datetime.max.time())
+
+    all_lessons = getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId, user, session, week_start, week_end)
+
     return all_lessons
 
 

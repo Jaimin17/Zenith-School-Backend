@@ -1,4 +1,6 @@
 import uuid
+from typing import Optional
+
 from psycopg import IntegrityError
 from fastapi import HTTPException
 from sqlalchemy import Select, func
@@ -65,6 +67,27 @@ def getAllClassOfTeacherAndIsDeleteFalse(supervisorId: uuid.UUID, session: Sessi
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_classes = session.exec(query).all()
     return all_classes
+
+
+def getClassOfStudentAndIsDeleteFalse(studentId: uuid.UUID, session: Session):
+    query = (
+        select(Class)
+        .join(
+            Student, Class.id == Student.class_id,
+        )
+        .where(
+            Student.id == studentId,
+            Class.is_delete == False,
+            Student.is_delete == False
+        )
+    )
+
+    student_class: Optional[Class] = session.exec(query).first()
+
+    if student_class is None:
+        raise HTTPException(status_code=404, detail="No class found with the provided ID.")
+
+    return student_class
 
 
 def findClassById(classId: uuid.UUID, session: Session):

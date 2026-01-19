@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from fastapi import HTTPException
@@ -6,9 +7,10 @@ from psycopg import IntegrityError
 from sqlalchemy import Select, func
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, or_, and_
+from starlette import status
 
 from core.config import settings
-from models import Lesson, Teacher, Class, Student, Subject, Exam, Assignment, Attendance
+from models import Lesson, Teacher, Class, Student, Subject, Exam, Assignment, Attendance, Parent
 from schemas import LessonSave, LessonUpdate
 
 
@@ -46,6 +48,24 @@ def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
     return all_lessons
 
 
+def getAllLessonOfCurrentWeekIsDeleteFalse(session: Session, week_start: datetime, week_end: datetime):
+    query = (
+        select(Lesson)
+        .options(
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.related_class)
+        )
+        .where(
+            Lesson.is_delete == False,
+            Lesson.start_time >= week_start,
+            Lesson.end_time <= week_end,
+        )
+    )
+
+    all_lessons = session.exec(query).all()
+    return all_lessons
+
+
 def getLessonById(lessonId: uuid.UUID, session: Session):
     query = (
         select(Lesson)
@@ -77,6 +97,26 @@ def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, s
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_lessons = session.exec(query).unique().all()
+    return all_lessons
+
+
+def getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse(teacherId: uuid.UUID, session: Session, week_start: datetime,
+                                                    week_end: datetime):
+    query = (
+        select(Lesson)
+        .options(
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.related_class)
+        )
+        .where(
+            Lesson.is_delete == False,
+            Lesson.teacher_id == teacherId,
+            Lesson.start_time >= week_start,
+            Lesson.end_time <= week_end,
+        )
+    )
+
+    all_lessons = session.exec(query).all()
     return all_lessons
 
 
@@ -120,6 +160,75 @@ def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, searc
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_lessons = session.exec(query).unique().all()
     return all_lessons
+
+
+def getAllLessonOfClassOfCurrentWeekIsDeleteFalse(classId: uuid.UUID, session: Session, week_start: datetime,
+                                                  week_end: datetime):
+    query = (
+        select(Lesson)
+        .options(
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.related_class)
+        )
+        .where(
+            Lesson.is_delete == False,
+            Lesson.class_id == classId,
+            Lesson.start_time >= week_start,
+            Lesson.end_time <= week_end,
+        )
+        .order_by(Lesson.start_time)
+    )
+
+    all_lessons = session.exec(query).all()
+    return all_lessons
+
+
+def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user: Parent, session: Session,
+                                                    week_start: datetime, week_end: datetime):
+    query = (
+        select(Lesson)
+        .join(Class, Lesson.class_id == Class.id)
+        .join(Student, Student.class_id == Class.id)
+        .options(
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.related_class),
+            selectinload(Lesson.subject)
+        )
+        .where(
+            and_(
+                Student.id == studentId,
+                Student.parent_id == user.id,
+                Student.is_delete == False,
+                Lesson.is_delete == False,
+                Lesson.start_time >= week_start,
+                Lesson.end_time <= week_end
+            )
+        )
+        .order_by(Lesson.start_time)
+    )
+
+    lessons = session.exec(query).all()
+
+    if not lessons:
+        # Check if student exists and belongs to parent
+        student_check = session.exec(
+            select(Student).where(
+                Student.id == studentId,
+                Student.parent_id == user.id,
+                Student.is_delete == False
+            )
+        ).first()
+
+        if not student_check:
+            raise HTTPException(
+                status_code=404,
+                detail="Student not found or does not belong to you"
+            )
+
+        # Student exists but no lessons (could be valid - no lessons this week)
+        return []
+
+    return lessons
 
 
 def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int):

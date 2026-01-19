@@ -106,10 +106,13 @@ def getById(eventId: uuid.UUID, current_user: AllUser, session: SessionDep):
 
 
 @router.get("/getAllByDate", response_model=List[EventBase])
-def getAllByDate(current_user: AdminUser, session: SessionDep, selectDate: str | None = None):
+def getAllByDate(current_user: AllUser, session: SessionDep, selectDate: str | None = None):
     searchDate = date.fromisoformat(selectDate) if selectDate is not None else date.today()
     print(f"Search Date is: {searchDate}")
-    events = getAllEventsByDate(session, searchDate)
+
+    user, role = current_user
+
+    events = getAllEventsByDate(session, searchDate, user, role)
     return events
 
 

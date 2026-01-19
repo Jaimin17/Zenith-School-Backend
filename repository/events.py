@@ -28,7 +28,7 @@ def addSearchOption(query: Select, search: str):
     return query
 
 
-def getAllEventsByDate(session: Session, searchDate: date):
+def getAllEventsByDate(session: Session, searchDate: date, user, role: str):
     day_start = datetime.combine(searchDate, time.min)
     day_end = datetime.combine(searchDate, time.max)
     print(f"From {day_start} to {day_end}")
@@ -40,6 +40,31 @@ def getAllEventsByDate(session: Session, searchDate: date):
             Event.end_time >= day_start
         )
     )
+
+    if role == "teacher":
+        # Teachers see events for their classes
+        query = query.join(Class, Event.class_id == Class.id).where(
+            Class.supervisor_id == user.id,
+            Class.is_delete == False
+        )
+    elif role == "student":
+        # Students see events for their class
+        query = query.join(Class, Event.class_id == Class.id).join(
+            Student, Class.id == Student.class_id
+        ).where(
+            Student.id == user.id,
+            Student.is_delete == False,
+            Class.is_delete == False
+        )
+    elif role == "parent":
+        # Parents see events for their children's classes
+        query = query.join(Class, Event.class_id == Class.id).join(
+            Student, Class.id == Student.class_id
+        ).where(
+            Student.parent_id == user.id,
+            Student.is_delete == False,
+            Class.is_delete == False
+        )
 
     query = query.order_by(Event.start_time)
 

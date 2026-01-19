@@ -5,13 +5,13 @@ from typing import List, Union, Optional
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 
 from core.config import settings
-from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser
+from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser, ParentOrTeacherOrAdminUser
 from core.database import SessionDep
 from models import UserSex
 from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, StudentDeleteResponse
 from repository.student import getAllStudentsIsDeleteFalse, getAllStudentsOfTeacherAndIsDeleteFalse, countStudent, \
     countStudentBySexAll, getStudentByIdAndIsDeleteFalse, StudentUpdate, studentSoftDelete, \
-    studentSaveWithImage
+    studentSaveWithImage, getAllStudentsOfParentAndIsDeleteFalse
 
 router = APIRouter(
     prefix="/student",
@@ -37,13 +37,15 @@ def getStudentById(studentId: uuid.UUID, current_user: StudentOrTeacherOrAdminUs
 
 
 @router.get("/getAll", response_model=List[StudentRead])
-def getAllStudents(current_user: TeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllStudents(current_user: ParentOrTeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
     user, role = current_user
 
     if role == "admin":
         all_students = getAllStudentsIsDeleteFalse(session, search, page)
     elif role == "teacher":
         all_students = getAllStudentsOfTeacherAndIsDeleteFalse(session, user.id, search, page)
+    else:
+        all_students = getAllStudentsOfParentAndIsDeleteFalse(session, user.id, search, page)
     return all_students
 
 

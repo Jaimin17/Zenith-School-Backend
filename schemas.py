@@ -520,9 +520,20 @@ class AttendanceListResponse(SQLModel):
     attendances: List[AttendanceDetail]
     total: int
 
+class CountStudent(SQLModel):
+    boys: int
+    girls: int
 
 class UsersCount(SQLModel):
     admins: int
     teachers: int
-    students: int
+    students: CountStudent
     parents: int
+
+class PaginatedTeacherResponse(BaseModel):
+    data: List[TeacherRead]
+    total_count: int
+    page: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
