@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from core.FileStorage import process_and_save_pdf, cleanup_pdf
 from core.config import settings
 from models import Announcement, Class, Student
-from schemas import AnnouncementSave, AnnouncementUpdate
+from schemas import AnnouncementSave, AnnouncementUpdate, PaginatedAnnouncementResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -32,17 +32,35 @@ def addSearchOption(query: Select, search: str):
 def getAllAnnouncementsIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    # Base query for counting
+    count_query = (
+        select(func.count(Announcement.id.distinct()))
+        .where(Announcement.is_delete == False)
+    )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
+    # Main query for data
     query = (
         select(Announcement)
         .where(Announcement.is_delete == False)
     )
-
     query = query.order_by(Announcement.announcement_date.desc())
-
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     announcements = session.exec(query).unique().all()
-    return announcements
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedAnnouncementResponse(
+        data=announcements,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAnnouncementById(session: Session, announcementId: uuid.UUID):
@@ -65,6 +83,19 @@ def getAnnouncementById(session: Session, announcementId: uuid.UUID):
 def getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, search, page):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    # Base query for counting
+    count_query = (
+        select(func.count(Announcement.id.distinct()))
+        .join(Class, onclause=(Announcement.class_id == Class.id), isouter=True)
+        .where(
+            Announcement.is_delete == False,
+            (Class.supervisor_id == teacherId) | (Announcement.class_id == None)
+        )
+    )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
+    # Main query for data
     query = (
         select(Announcement)
         .join(Class, onclause=(Announcement.class_id == Class.id), isouter=True)
@@ -73,18 +104,41 @@ def getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, search, pag
             (Class.supervisor_id == teacherId) | (Announcement.class_id == None)
         )
     )
-
     query = query.order_by(Announcement.announcement_date.desc())
-
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     announcements = session.exec(query).unique().all()
-    return announcements
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedAnnouncementResponse(
+        data=announcements,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllAnnouncementsByStudentAndIsDeleteFalse(studentId, session, search, page):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    # Base query for counting
+    count_query = (
+        select(func.count(Announcement.id.distinct()))
+        .join(Class, onclause=(Class.id == Announcement.class_id), isouter=True)
+        .join(Student, onclause=(Class.id == Student.class_id))
+        .where(
+            Announcement.is_delete == False,
+            (Student.id == studentId) | (Announcement.class_id == None)
+        )
+    )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
+    # Main query for data
     query = (
         select(Announcement)
         .join(Class, onclause=(Class.id == Announcement.class_id), isouter=True)
@@ -94,34 +148,66 @@ def getAllAnnouncementsByStudentAndIsDeleteFalse(studentId, session, search, pag
             (Student.id == studentId) | (Announcement.class_id == None)
         )
     )
-
     query = query.order_by(Announcement.announcement_date.desc())
-
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     announcements = session.exec(query).unique().all()
-    return announcements
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedAnnouncementResponse(
+        data=announcements,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllAnnouncementsByParentAndIsDeleteFalse(parentId, session, search, page):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    query = (
-        select(Announcement)
-        .join(Class, onclause=(Class.id == Announcement.class_id))
+    # Base query for counting
+    count_query = (
+        select(func.count(Announcement.id.distinct()))
+        .join(Class, onclause=(Class.id == Announcement.class_id), isouter=True)
         .join(Student, onclause=(Class.id == Student.class_id))
         .where(
             Announcement.is_delete == False,
             (Student.parent_id == parentId) | (Announcement.class_id == None)
         )
     )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
+    # Main query for data
+    query = (
+        select(Announcement)
+        .join(Class, onclause=(Class.id == Announcement.class_id), isouter=True)
+        .join(Student, onclause=(Class.id == Student.class_id))
+        .where(
+            Announcement.is_delete == False,
+            (Student.parent_id == parentId) | (Announcement.class_id == None)
+        )
+    )
     query = query.order_by(Announcement.announcement_date.desc())
-
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     announcements = session.exec(query).unique().all()
-    return announcements
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedAnnouncementResponse(
+        data=announcements,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 async def announcementSave(announcement: AnnouncementSave, pdf: Optional[UploadFile], userId: uuid.UUID, role: str,

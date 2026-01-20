@@ -10,7 +10,7 @@ from sqlmodel import Session, select, or_, and_
 from datetime import datetime
 from core.config import settings
 from models import Event, Class, Student
-from schemas import EventSave, EventUpdate
+from schemas import EventSave, EventUpdate, PaginatedEventResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -91,23 +91,55 @@ def getEventById(session: Session, eventId: uuid.UUID):
 def getAllEventsIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    # Count query
+    count_query = (
+        select(func.count(Event.id.distinct()))
+        .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
+        .where(Event.is_delete == False)
+    )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
+    # Data query
     query = (
         select(Event)
         .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
         .where(Event.is_delete == False)
     )
-
     query = query.order_by(Event.start_time.desc())
-
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     events = session.exec(query).unique().all()
-    return events
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedEventResponse(
+        data=events,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllEventsByTeacherAndIsDeleteFalse(teacherId, session, search, page):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    # Count query
+    count_query = (
+        select(func.count(Event.id.distinct()))
+        .join(Class, onclause=(Event.class_id == Class.id), isouter=True)
+        .where(
+            Event.is_delete == False,
+            (Class.supervisor_id == teacherId) | (Event.class_id == None)
+        )
+    )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
+    # Data query
     query = (
         select(Event)
         .join(Class, onclause=(Event.class_id == Class.id), isouter=True)
@@ -116,18 +148,41 @@ def getAllEventsByTeacherAndIsDeleteFalse(teacherId, session, search, page):
             (Class.supervisor_id == teacherId) | (Event.class_id == None)
         )
     )
-
     query = query.order_by(Event.start_time.desc())
-
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     events = session.exec(query).unique().all()
-    return events
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedEventResponse(
+        data=events,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllEventsByStudentAndIsDeleteFalse(studentId, session, search, page):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    # Count query
+    count_query = (
+        select(func.count(Event.id.distinct()))
+        .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
+        .join(Student, onclause=(Class.id == Student.class_id))
+        .where(
+            Event.is_delete == False,
+            (Student.id == studentId) | (Event.class_id == None)
+        )
+    )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
+    # Data query
     query = (
         select(Event)
         .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
@@ -137,34 +192,66 @@ def getAllEventsByStudentAndIsDeleteFalse(studentId, session, search, page):
             (Student.id == studentId) | (Event.class_id == None)
         )
     )
-
     query = query.order_by(Event.start_time.desc())
-
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     events = session.exec(query).unique().all()
-    return events
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedEventResponse(
+        data=events,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllEventsByParentAndIsDeleteFalse(parentId, session, search, page):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    query = (
-        select(Event)
-        .join(Class, onclause=(Class.id == Event.class_id))
+    # Count query
+    count_query = (
+        select(func.count(Event.id.distinct()))
+        .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
         .join(Student, onclause=(Class.id == Student.class_id))
         .where(
             Event.is_delete == False,
             (Student.parent_id == parentId) | (Event.class_id == None)
         )
     )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
+    # Data query
+    query = (
+        select(Event)
+        .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
+        .join(Student, onclause=(Class.id == Student.class_id))
+        .where(
+            Event.is_delete == False,
+            (Student.parent_id == parentId) | (Event.class_id == None)
+        )
+    )
     query = query.order_by(Event.start_time.desc())
-
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     events = session.exec(query).unique().all()
-    return events
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedEventResponse(
+        data=events,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def eventSave(event: EventSave, session: Session):

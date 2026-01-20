@@ -5,21 +5,27 @@ from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentUser
 from repository.classes import getAllClassesIsDeleteFalse, getAllClassOfTeacherAndIsDeleteFalse, findClassById, \
     classSave, ClassUpdate, ClassSoftDeleteWithLessonsStudentsEventsAnnoucements, countAllClassOfTheTeacher, \
-    getClassOfStudentAndIsDeleteFalse
-from schemas import ClassRead, SaveResponse, ClassSave, ClassUpdateBase, ClassDeleteResponse
+    getClassOfStudentAndIsDeleteFalse, getAllClassesIsDeleteFalseAtOnce
+from schemas import ClassRead, SaveResponse, ClassSave, ClassUpdateBase, ClassDeleteResponse, PaginatedClassResponse
 
 router = APIRouter(
     prefix="/classes",
 )
 
 
-@router.get("/getAll", response_model=List[ClassRead])
+@router.get("/getAll", response_model=PaginatedClassResponse)
 def getAllClasses(current_user: TeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
     user, role = current_user
     if role == "admin":
         all_classes = getAllClassesIsDeleteFalse(session, search, page)
     else:
         all_classes = getAllClassOfTeacherAndIsDeleteFalse(user.id, session, search, page)
+    return all_classes
+
+
+@router.get("/getAllAtOnce", response_model=List[ClassRead])
+def getAllClassesAtOnce(current_user: AdminUser, session: SessionDep):
+    all_classes = getAllClassesIsDeleteFalseAtOnce(session)
     return all_classes
 
 

@@ -9,6 +9,14 @@ from sqlmodel import SQLModel, Field
 from models import UserSex, Day
 
 
+class PaginatedBaseResponse(BaseModel):
+    total_count: int
+    page: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+
+
 class UserBase(BaseModel):
     username: str
     first_name: str
@@ -230,6 +238,10 @@ class ClassRead(ClassBase):
     grade: Optional[GradeBase] = None
 
 
+class PaginatedClassResponse(PaginatedBaseResponse):
+    data: List[ClassRead]
+
+
 class ClassSave(SQLModel):
     name: str
     capacity: int
@@ -253,6 +265,10 @@ class ClassDeleteResponse(SQLModel):
 class TeacherRead(TeacherBase):
     subjects: List[SubjectBase] = []
     classes: List[ClassBase] = []
+
+
+class PaginatedTeacherResponse(PaginatedBaseResponse):
+    data: List[TeacherRead]
 
 
 class TeacherDeleteResponse(SaveResponse):
@@ -379,8 +395,16 @@ class EventUpdate(EventSave):
     id: uuid.UUID
 
 
+class PaginatedEventResponse(PaginatedBaseResponse):
+    data: List[EventRead]
+
+
 class AnnouncementRead(AnnouncementBase):
     related_class: Optional[ClassBase] = None
+
+
+class PaginatedAnnouncementResponse(PaginatedBaseResponse):
+    data: List[AnnouncementRead]
 
 
 class AnnouncementSave(SQLModel):
@@ -520,20 +544,14 @@ class AttendanceListResponse(SQLModel):
     attendances: List[AttendanceDetail]
     total: int
 
+
 class CountStudent(SQLModel):
     boys: int
     girls: int
+
 
 class UsersCount(SQLModel):
     admins: int
     teachers: int
     students: CountStudent
     parents: int
-
-class PaginatedTeacherResponse(BaseModel):
-    data: List[TeacherRead]
-    total_count: int
-    page: int
-    total_pages: int
-    has_next: bool
-    has_prev: bool

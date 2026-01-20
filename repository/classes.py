@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from core.config import settings
 from models import Class, Teacher, Grade, Lesson, Student, Event
-from schemas import ClassSave, ClassUpdateBase
+from schemas import ClassSave, ClassUpdateBase, PaginatedClassResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -24,6 +24,13 @@ def addSearchOption(query: Select, search: str):
 def getAllClassesIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Class.id.distinct()))
+        .where(Class.is_delete == False)
+    )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Class)
         .where(Class.is_delete == False)
@@ -35,6 +42,31 @@ def getAllClassesIsDeleteFalse(session: Session, search: str, page: int):
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_classes = session.exec(query).all()
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1)
+
+    return PaginatedClassResponse(
+        data=all_classes,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
+
+
+def getAllClassesIsDeleteFalseAtOnce(session: Session):
+    query = (
+        select(Class)
+        .where(
+            Class.is_delete == False
+        )
+    )
+
+    query = query.order_by(func.lower(Class.name))
+
+    all_classes = session.exec(query).all()
+
     return all_classes
 
 
@@ -52,6 +84,17 @@ def countAllClassOfTheTeacher(teacherId: uuid.UUID, session: Session):
 def getAllClassOfTeacherAndIsDeleteFalse(supervisorId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Class.id.distinct()))
+        .where(
+            Class.supervisor_id == supervisorId,
+            Class.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Class)
         .where(
@@ -66,7 +109,17 @@ def getAllClassOfTeacherAndIsDeleteFalse(supervisorId: uuid.UUID, session: Sessi
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_classes = session.exec(query).all()
-    return all_classes
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1)
+
+    return PaginatedClassResponse(
+        data=all_classes,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getClassOfStudentAndIsDeleteFalse(studentId: uuid.UUID, session: Session):

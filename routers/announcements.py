@@ -8,14 +8,14 @@ from models import Announcement
 from repository.announcements import getAllAnnouncementsIsDeleteFalse, getAllAnnouncementsByTeacherAndIsDeleteFalse, \
     getAllAnnouncementsByStudentAndIsDeleteFalse, getAllAnnouncementsByParentAndIsDeleteFalse, announcementSave, \
     announcementUpdate, AnnouncementSoftDelete, getAnnouncementById
-from schemas import AnnouncementRead, SaveResponse, AnnouncementSave, AnnouncementUpdate
+from schemas import AnnouncementRead, SaveResponse, AnnouncementSave, AnnouncementUpdate, PaginatedAnnouncementResponse
 
 router = APIRouter(
     prefix="/announcements",
 )
 
 
-@router.get("/getAll", response_model=List[AnnouncementRead])
+@router.get("/getAll", response_model=PaginatedAnnouncementResponse)
 def getAllAnnouncements(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
     user, role = current_user
     if role == "admin":

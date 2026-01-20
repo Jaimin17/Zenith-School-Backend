@@ -7,14 +7,14 @@ from deps import CurrentUser, AllUser, AdminUser
 from repository.events import getAllEventsIsDeleteFalse, getAllEventsByTeacherAndIsDeleteFalse, \
     getAllEventsByStudentAndIsDeleteFalse, getAllEventsByParentAndIsDeleteFalse, getAllEventsByDate, eventSave, \
     eventUpdate, EventSoftDelete, getEventById
-from schemas import EventRead, EventBase, SaveResponse, EventSave, EventUpdate
+from schemas import EventRead, EventBase, SaveResponse, EventSave, EventUpdate, PaginatedEventResponse
 
 router = APIRouter(
     prefix="/events",
 )
 
 
-@router.get("/getAll", response_model=List[EventRead])
+@router.get("/getAll", response_model=PaginatedEventResponse)
 def getAllEvents(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
     user, role = current_user
     if role == "admin":
