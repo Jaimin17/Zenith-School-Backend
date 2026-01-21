@@ -9,7 +9,7 @@ from sqlalchemy import func, Select
 from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
 from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance, UserSex
-from schemas import StudentSave, StudentUpdateBase
+from schemas import StudentSave, StudentUpdateBase, PaginatedStudentResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -74,6 +74,14 @@ def countStudentBySexAll(session: Session):
 def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Student.id.distinct()))
+        .where(Student.is_delete == False)
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Student)
         .where(Student.is_delete == False)
@@ -85,11 +93,40 @@ def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int):
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     active_students = session.exec(query).all()
-    return active_students
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedStudentResponse(
+        data=active_students,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UUID, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    count_query = (
+        select(func.count(Student.id.distinct()))
+        .join(
+            Class,
+            onclause=(Class.id == Student.class_id)
+        )
+        .join(
+            Lesson,
+            onclause=(Lesson.class_id == Class.id)
+        )
+        .where(
+            Student.is_delete == False,
+            Lesson.teacher_id == teacherId,
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
     query = (
         select(Student)
@@ -114,11 +151,32 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     results = session.exec(query).all()
-    return results
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedStudentResponse(
+        data=results,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllStudentsOfParentAndIsDeleteFalse(session: Session, parentId: uuid.UUID, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    count_query = (
+        select(func.count(Student.id.distinct()))
+        .where(
+            Student.parent_id == parentId,
+            Student.is_delete == False,
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
     query = (
         select(Student)
@@ -135,7 +193,17 @@ def getAllStudentsOfParentAndIsDeleteFalse(session: Session, parentId: uuid.UUID
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     results = session.exec(query).all()
-    return results
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedStudentResponse(
+        data=results,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 async def studentSaveWithImage(student_data: dict, img: Optional[UploadFile], session: Session):

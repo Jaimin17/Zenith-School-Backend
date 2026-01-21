@@ -8,7 +8,8 @@ from core.config import settings
 from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser, ParentOrTeacherOrAdminUser
 from core.database import SessionDep
 from models import UserSex
-from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, StudentDeleteResponse
+from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, StudentDeleteResponse, \
+    PaginatedStudentResponse
 from repository.student import getAllStudentsIsDeleteFalse, getAllStudentsOfTeacherAndIsDeleteFalse, countStudent, \
     countStudentBySexAll, getStudentByIdAndIsDeleteFalse, StudentUpdate, studentSoftDelete, \
     studentSaveWithImage, getAllStudentsOfParentAndIsDeleteFalse
@@ -36,7 +37,7 @@ def getStudentById(studentId: uuid.UUID, current_user: StudentOrTeacherOrAdminUs
     return studentDetail
 
 
-@router.get("/getAll", response_model=List[StudentRead])
+@router.get("/getAll", response_model=PaginatedStudentResponse)
 def getAllStudents(current_user: ParentOrTeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
     user, role = current_user
 

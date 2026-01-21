@@ -6,14 +6,14 @@ from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AllUser, TeacherOrAdminUser
 from repository.exams import getAllExamsIsDeleteFalse, getAllExamsOfTeacherIsDeleteFalse, \
     getAllExamsOfClassIsDeleteFalse, getAllExamsOfParentIsDeleteFalse, examSave, examUpdate, examSoftDelete
-from schemas import ExamRead, SaveResponse, ExamSave, ExamUpdate, ExamDeleteResponse
+from schemas import ExamRead, SaveResponse, ExamSave, ExamUpdate, ExamDeleteResponse, PaginatedExamResponse
 
 router = APIRouter(
     prefix="/exam",
 )
 
 
-@router.get("/getAll", response_model=List[ExamRead])
+@router.get("/getAll", response_model=PaginatedExamResponse)
 def getAllExam(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
     user, role = current_user
     if role == "admin":
@@ -27,14 +27,14 @@ def getAllExam(current_user: AllUser, session: SessionDep, search: str = None, p
     return all_exams
 
 
-@router.get("/teacher/{teacherId}", response_model=List[ExamRead])
+@router.get("/teacher/{teacherId}", response_model=PaginatedExamResponse)
 def getAllExamsOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                          page: int = 1):
     all_exams = getAllExamsOfTeacherIsDeleteFalse(teacherId, session, search, page)
     return all_exams
 
 
-@router.get("/class/{classId}", response_model=List[ExamRead])
+@router.get("/class/{classId}", response_model=PaginatedExamResponse)
 def getAllExamsOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                        page: int = 1):
     all_exams = getAllExamsOfClassIsDeleteFalse(classId, session, search, page)

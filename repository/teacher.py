@@ -48,6 +48,17 @@ def getAllTeachersIsDeleteFalse(session: Session, search: str, page: int):
     return active_teachers
 
 
+def getAllTeachersListIsDeleteFalse(session: Session):
+    query = (
+        select(Teacher)
+        .where(Teacher.is_delete == False)
+    )
+
+    query = query.order_by(func.lower(Teacher.username))
+    active_teachers = session.exec(query).all()
+    return active_teachers
+
+
 def getTotalTeachersCount(session: Session, search: str = None) -> int:
     query = (
         select(func.count(Teacher.id))

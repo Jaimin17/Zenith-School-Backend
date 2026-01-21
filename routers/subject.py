@@ -6,14 +6,15 @@ from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AdminUser, TeacherOrAdminUser
 from repository.subject import getAllSubjectsIsDeleteFalse, subjectSave, SubjectUpdate, SubjectSoftDelete_with_lesson, \
     findSubjectById, countSubjectForTeacher
-from schemas import SubjectRead, SubjectBase, SubjectSave, SubjectSaveResponse, SubjectUpdateBase
+from schemas import SubjectRead, SubjectBase, SubjectSave, SubjectSaveResponse, SubjectUpdateBase, \
+    PaginatedSubjectResponse
 
 router = APIRouter(
     prefix="/subject",
 )
 
 
-@router.get("/getAll", response_model=List[SubjectRead])
+@router.get("/getAll", response_model=PaginatedSubjectResponse)
 def getAllSubject(current_user: AdminUser, session: SessionDep, search: str = None, page: int = 1):
     all_subjects = getAllSubjectsIsDeleteFalse(session, search, page)
     return all_subjects

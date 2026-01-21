@@ -5,13 +5,13 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
 
 from core.config import settings
-from deps import CurrentUser, TeacherOrAdminUser, AdminUser
+from deps import CurrentUser, TeacherOrAdminUser, AdminUser, AllUser
 from core.database import SessionDep
 from models import UserSex
 from repository.teacher import getAllTeachersIsDeleteFalse, getAllTeachersOfClassAndIsDeleteFalse, countTeacher, \
     findTeacherById, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject, teacherSaveWithImage, \
-    getTotalTeachersCount
-from schemas import TeacherRead, SaveResponse, TeacherDeleteResponse, PaginatedTeacherResponse
+    getTotalTeachersCount, getAllTeachersListIsDeleteFalse
+from schemas import TeacherRead, SaveResponse, TeacherDeleteResponse, PaginatedTeacherResponse, TeacherBase
 
 router = APIRouter(
     prefix="/teacher",
@@ -40,6 +40,12 @@ def getAllTeachers(current_user: TeacherOrAdminUser, session: SessionDep, search
         has_next=has_next,
         has_prev=has_prev
     )
+
+@router.get("/getFullList", response_model=List[TeacherBase])
+def getFullTeacherList(current_user: AllUser, session: SessionDep):
+    all_teachers = getAllTeachersListIsDeleteFalse(session)
+
+    return all_teachers
 
 
 @router.get("/{classId}", response_model=List[TeacherRead])

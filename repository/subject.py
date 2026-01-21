@@ -7,7 +7,7 @@ from sqlmodel import Session, select, insert
 
 from core.config import settings
 from models import Subject, Teacher, Lesson, TeacherSubjectLink
-from schemas import SubjectSave, SubjectBase, SubjectUpdateBase
+from schemas import SubjectSave, SubjectBase, SubjectUpdateBase, PaginatedSubjectResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -23,6 +23,16 @@ def addSearchOption(query: Select, search: str):
 def getAllSubjectsIsDeleteFalse(session: Session, search: str = None, page: int = 1):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Subject.id.distinct()))
+        .where(
+            Subject.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Subject)
         .where(Subject.is_delete == False)
@@ -34,7 +44,17 @@ def getAllSubjectsIsDeleteFalse(session: Session, search: str = None, page: int 
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     active_subjects = session.exec(query).all()
-    return active_subjects
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedSubjectResponse(
+        data=active_subjects,
+        total_pages=total_pages,
+        total_count=total_count,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def findSubjectById(subjectId: uuid.UUID, session: Session):

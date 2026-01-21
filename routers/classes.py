@@ -23,7 +23,7 @@ def getAllClasses(current_user: TeacherOrAdminUser, session: SessionDep, search:
     return all_classes
 
 
-@router.get("/getAllAtOnce", response_model=List[ClassRead])
+@router.get("/getFullList", response_model=List[ClassRead])
 def getAllClassesAtOnce(current_user: AdminUser, session: SessionDep):
     all_classes = getAllClassesIsDeleteFalseAtOnce(session)
     return all_classes

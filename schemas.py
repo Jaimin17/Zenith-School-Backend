@@ -305,6 +305,10 @@ class SubjectRead(SubjectBase):
     teachers: List[TeacherBase] = []
 
 
+class PaginatedSubjectResponse(PaginatedBaseResponse):
+    data: List[SubjectRead]
+
+
 class SubjectUpdateBase(SQLModel):
     id: uuid.UUID
     name: str
@@ -315,6 +319,10 @@ class StudentRead(StudentBase):
     parent: Optional[ParentBase] = None
     related_class: Optional[ClassBase] = None
     grade: Optional[GradeBase] = None
+
+
+class PaginatedStudentResponse(PaginatedBaseResponse):
+    data: List[StudentRead]
 
 
 class StudentSave(SQLModel):
@@ -420,6 +428,10 @@ class AnnouncementUpdate(AnnouncementSave):
 
 class ExamRead(ExamBase):
     lesson: Optional[LessonRead] = None
+
+
+class PaginatedExamResponse(PaginatedBaseResponse):
+    data: List[ExamRead]
 
 
 class ExamSave(SQLModel):
