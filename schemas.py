@@ -453,6 +453,10 @@ class AssignmentRead(AssignmentBase):
     lesson: Optional[LessonRead] = None
 
 
+class PaginatedAssignmentResponse(PaginatedBaseResponse):
+    data: List[AssignmentRead]
+
+
 class AssignmentSave(SQLModel):
     title: str
     start_date: date
@@ -472,6 +476,10 @@ class ResultRead(ResultBase):
     exam: Optional[ExamRead] = None
     assignment: Optional[AssignmentRead] = None
     student: Optional[StudentBase] = None
+
+
+class PaginatedResultResponse(PaginatedBaseResponse):
+    data: List[ResultRead]
 
 
 class ResultSave(SQLModel):

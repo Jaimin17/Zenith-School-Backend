@@ -9,15 +9,16 @@ from repository.assignments import getAllAssignmentsIsDeleteFalse, getAllAssignm
     getAllAssignmentsOfClassIsDeleteFalse, getAllAssignmentsOfParentIsDeleteFalse, assignmentSaveWithPdf, \
     assignmentUpdate, \
     assignmentSoftDelete, getAssignmentById
-from schemas import AssignmentRead, SaveResponse, AssignmentSave, AssignmentUpdate, AssignmentDeleteResponse
+from schemas import AssignmentRead, SaveResponse, AssignmentSave, AssignmentUpdate, AssignmentDeleteResponse, \
+    PaginatedAssignmentResponse
 
 router = APIRouter(
     prefix="/assignments",
 )
 
 
-@router.get("/getAll", response_model=List[AssignmentRead])
-def getAllExam(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
+@router.get("/getAll", response_model=PaginatedAssignmentResponse)
+def getAllAssignment(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
     user, role = current_user
     if role == "admin":
         all_exams = getAllAssignmentsIsDeleteFalse(session, search, page)
@@ -107,14 +108,14 @@ def getById(current_user: AllUser, session: SessionDep, assignmentId: uuid.UUID)
 
 
 @router.get("/teacher/{teacherId}", response_model=List[AssignmentRead])
-def getAllExamsOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
+def getAllAssignmentOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                          page: int = 1):
     all_exams = getAllAssignmentsOfTeacherIsDeleteFalse(teacherId, session, search, page)
     return all_exams
 
 
 @router.get("/class/{classId}", response_model=List[AssignmentRead])
-def getAllExamsOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
+def getAllAssignmentOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                        page: int = 1):
     all_exams = getAllAssignmentsOfClassIsDeleteFalse(classId, session, search, page)
     return all_exams

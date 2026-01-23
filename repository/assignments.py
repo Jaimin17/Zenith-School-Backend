@@ -10,7 +10,7 @@ from sqlmodel import Session, select, or_, and_
 from core.FileStorage import cleanup_pdf, process_and_save_pdf
 from core.config import settings
 from models import Assignment, Lesson, Class, Student, Result
-from schemas import AssignmentSave, AssignmentUpdate
+from schemas import AssignmentSave, AssignmentUpdate, PaginatedAssignmentResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -26,6 +26,14 @@ def addSearchOption(query: Select, search: str):
 def getAllAssignmentsIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Assignment.id.distinct()))
+        .where(Assignment.is_delete == False)
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Assignment)
         .where(Assignment.is_delete == False)
@@ -33,8 +41,18 @@ def getAllAssignmentsIsDeleteFalse(session: Session, search: str, page: int):
 
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
-    all_exams = session.exec(query).unique().all()
-    return all_exams
+    all_assignments = session.exec(query).unique().all()
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedAssignmentResponse(
+        data=all_assignments,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAssignmentById(session: Session, assignmentId: uuid.UUID):
@@ -58,6 +76,18 @@ def getAssignmentById(session: Session, assignmentId: uuid.UUID):
 def getAllAssignmentsOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Assignment.id.distinct()))
+        .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
+        .where(
+            Lesson.teacher_id == teacherId,
+            Assignment.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Assignment)
         .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
@@ -71,11 +101,35 @@ def getAllAssignmentsOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Sessi
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_assignments = session.exec(query).unique().all()
-    return all_assignments
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedAssignmentResponse(
+        data=all_assignments,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllAssignmentsOfParentIsDeleteFalse(parentId, session, search, page):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    count_query = (
+        select(func.count(Assignment.id.distinct()))
+        .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
+        .join(Class, onclause=(Class.id == Lesson.class_id))
+        .join(Student, onclause=(Student.class_id == Class.id))
+        .where(
+            Student.parent_id == parentId,
+            Assignment.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
     query = (
         select(Assignment)
@@ -92,11 +146,32 @@ def getAllAssignmentsOfParentIsDeleteFalse(parentId, session, search, page):
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_assignments = session.exec(query).unique().all()
-    return all_assignments
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedAssignmentResponse(
+        data=all_assignments,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllAssignmentsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    count_query = (
+        select(func.count(Assignment.id.distinct()))
+        .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
+        .where(
+            Lesson.class_id == classId,
+            Assignment.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
     query = (
         select(Assignment)
@@ -110,7 +185,16 @@ def getAllAssignmentsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, 
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_assignments = session.exec(query).unique().all()
-    return all_assignments
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedAssignmentResponse(
+        data=all_assignments,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: UploadFile, userId: uuid.UUID, role: str,

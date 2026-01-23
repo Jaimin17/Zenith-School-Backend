@@ -6,14 +6,14 @@ from deps import CurrentUser, AllUser, TeacherOrAdminUser
 from repository.results import getAllResultsIsDeleteFalse, getAllResultsByTeacherIsDeleteFalse, \
     getAllResultsOfClassIsDeleteFalse, getAllResultsOfStudentIsDeleteFalse, getAllResultsOfParentIsDeleteFalse, \
     resultSave, resultUpdate, ResultSoftDelete
-from schemas import ResultRead, SaveResponse, ResultSave, ResultUpdate
+from schemas import ResultRead, SaveResponse, ResultSave, ResultUpdate, PaginatedResultResponse
 
 router = APIRouter(
     prefix="/results",
 )
 
 
-@router.get("/getAll", response_model=List[ResultRead])
+@router.get("/getAll", response_model=PaginatedResultResponse)
 def getAllResults(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
     user, role = current_user
     if role == "admin":
@@ -34,7 +34,7 @@ def getAllResultsByTeacher(teacherId: uuid.UUID, current_user: CurrentUser, sess
     return all_results
 
 
-@router.get("/class/{classId}", response_model=List[ResultRead])
+@router.get("/class/{classId}", response_model=PaginatedResultResponse)
 def getAllResultsOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                          page: int = 1):
     all_results = getAllResultsOfClassIsDeleteFalse(classId, session, search, page)

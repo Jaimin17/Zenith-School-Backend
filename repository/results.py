@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from core.config import settings
 from models import Student, Teacher, Exam, Assignment, Result, Lesson, Class
-from schemas import ResultSave, ResultUpdate
+from schemas import ResultSave, ResultUpdate, PaginatedResultResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -39,6 +39,25 @@ def addSearchOption(query: Select, search: str):
 def getAllResultsIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Result.id.distinct()))
+        .join(Student, Student.id == Result.student_id)
+        .join(Exam, Exam.id == Result.exam_id, isouter=True)
+        .join(Assignment, Assignment.id == Result.assignment_id, isouter=True)
+        .join(
+            Lesson,
+            (Lesson.id == Exam.lesson_id) | (Lesson.id == Assignment.lesson_id),
+            isouter=True
+        )
+        .join(Teacher, Teacher.id == Lesson.teacher_id, isouter=True)
+        .where(
+            Result.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Result)
         .join(Student, Student.id == Result.student_id)
@@ -57,11 +76,41 @@ def getAllResultsIsDeleteFalse(session: Session, search: str, page: int):
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_results = session.exec(query).unique().all()
-    return all_results
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedResultResponse(
+        data=all_results,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllResultsByTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    count_query = (
+        select(func.count(Result.id.distinct()))
+        .join(Student, Student.id == Result.student_id)
+        .join(Exam, Exam.id == Result.exam_id, isouter=True)
+        .join(Assignment, Assignment.id == Result.assignment_id, isouter=True)
+        .join(
+            Lesson,
+            (Lesson.id == Exam.lesson_id) | (Lesson.id == Assignment.lesson_id),
+            isouter=True
+        )
+        .join(Teacher, Teacher.id == Lesson.teacher_id, isouter=True)
+        .where(
+            Teacher.id == teacherId,
+            Result.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
     query = (
         select(Result)
@@ -84,11 +133,41 @@ def getAllResultsByTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, 
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_results = session.exec(query).unique().all()
-    return all_results
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedResultResponse(
+        data=all_results,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllResultsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    count_query = (
+        select(func.count(Result.id.distinct()))
+        .join(Student, Student.id == Result.student_id)
+        .join(Exam, Exam.id == Result.exam_id, isouter=True)
+        .join(Assignment, Assignment.id == Result.assignment_id, isouter=True)
+        .join(
+            Lesson,
+            (Lesson.id == Exam.lesson_id) | (Lesson.id == Assignment.lesson_id),
+            isouter=True
+        )
+        .join(Teacher, Teacher.id == Lesson.teacher_id, isouter=True)
+        .where(
+            Lesson.class_id == classId,
+            Result.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
     query = (
         select(Result)
@@ -111,11 +190,41 @@ def getAllResultsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, sear
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_results = session.exec(query).unique().all()
-    return all_results
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedResultResponse(
+        data=all_results,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllResultsOfStudentIsDeleteFalse(studentId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    count_query = (
+        select(func.count(Result.id.distinct()))
+        .join(Student, Student.id == Result.student_id)
+        .join(Exam, Exam.id == Result.exam_id, isouter=True)
+        .join(Assignment, Assignment.id == Result.assignment_id, isouter=True)
+        .join(
+            Lesson,
+            (Lesson.id == Exam.lesson_id) | (Lesson.id == Assignment.lesson_id),
+            isouter=True
+        )
+        .join(Teacher, Teacher.id == Lesson.teacher_id, isouter=True)
+        .where(
+            Result.student_id == studentId,
+            Result.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
     query = (
         select(Result)
@@ -138,11 +247,41 @@ def getAllResultsOfStudentIsDeleteFalse(studentId: uuid.UUID, session: Session, 
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_results = session.exec(query).unique().all()
-    return all_results
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedResultResponse(
+        data=all_results,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllResultsOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    count_query = (
+        select(func.count(Result.id.distinct()))
+        .join(Student, Student.id == Result.student_id)
+        .join(Exam, Exam.id == Result.exam_id, isouter=True)
+        .join(Assignment, Assignment.id == Result.assignment_id, isouter=True)
+        .join(
+            Lesson,
+            (Lesson.id == Exam.lesson_id) | (Lesson.id == Assignment.lesson_id),
+            isouter=True
+        )
+        .join(Teacher, Teacher.id == Lesson.teacher_id, isouter=True)
+        .where(
+            Student.parent_id == parentId,
+            Result.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
 
     query = (
         select(Result)
@@ -165,7 +304,17 @@ def getAllResultsOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, se
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_results = session.exec(query).unique().all()
-    return all_results
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedResultResponse(
+        data=all_results,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def resultSave(result: ResultSave, userId: uuid.UUID, role: str, session: Session):
@@ -343,7 +492,6 @@ def resultUpdate(result: ResultUpdate, userId: uuid.UUID, role: str, session: Se
             Student.is_delete == False
         )
         new_student = session.exec(student_query).first()
-
 
     if current_result.exam_id != result.exam_id:
         if result.exam_id is not None:
