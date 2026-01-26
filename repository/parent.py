@@ -8,7 +8,7 @@ from sqlmodel import Session, select, or_
 
 from core.config import settings
 from models import Parent, Student
-from schemas import ParentSave, ParentUpdate
+from schemas import ParentSave, ParentUpdate, PaginatedParentResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -32,6 +32,14 @@ def countParent(session: Session):
 def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 1):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Parent.id.distinct()))
+        .where(Parent.is_delete == False)
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Parent)
         .where(Parent.is_delete == False)
@@ -43,7 +51,16 @@ def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     active_parents = session.exec(query).all()
-    return active_parents
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedParentResponse(
+        data=active_parents,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getParentById(parentId: uuid.UUID, session: Session):

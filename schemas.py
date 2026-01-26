@@ -301,6 +301,10 @@ class ParentRead(ParentBase):
     students: List[StudentBase] = []
 
 
+class PaginatedParentResponse(PaginatedBaseResponse):
+    data: List[ParentRead]
+
+
 class SubjectRead(SubjectBase):
     teachers: List[TeacherBase] = []
 

@@ -14,16 +14,25 @@ router = APIRouter(
 
 
 @router.get("/getAll", response_model=PaginatedResultResponse)
-def getAllResults(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllResults(
+        current_user: AllUser,
+        session: SessionDep,
+        search: str = None,
+        page: int = 1,
+        class_id: str = None,  # New
+        exam_id: str = None,   # New
+        assignment_id: str = None,  # New
+        type: str = None  # "exam" or "assignment"  # New
+):
     user, role = current_user
     if role == "admin":
-        all_results = getAllResultsIsDeleteFalse(session, search, page)
+        all_results = getAllResultsIsDeleteFalse(session, search, page, class_id, exam_id, assignment_id, type)
     elif role == "teacher":
-        all_results = getAllResultsByTeacherIsDeleteFalse(user.id, session, search, page)
+        all_results = getAllResultsByTeacherIsDeleteFalse(user.id, session, search, page, class_id, exam_id, assignment_id, type)
     elif role == "student":
-        all_results = getAllResultsOfStudentIsDeleteFalse(user.id, session, search, page)
+        all_results = getAllResultsOfStudentIsDeleteFalse(user.id, session, search, page, class_id, exam_id, assignment_id, type)
     elif role == "parent":
-        all_results = getAllResultsOfParentIsDeleteFalse(user.id, session, search, page)
+        all_results = getAllResultsOfParentIsDeleteFalse(user.id, session, search, page, class_id, exam_id, assignment_id, type)
     return all_results
 
 
