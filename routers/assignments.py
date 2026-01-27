@@ -18,18 +18,40 @@ router = APIRouter(
 
 
 @router.get("/getAll", response_model=PaginatedAssignmentResponse)
-def getAllAssignment(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllAssignment(
+        current_user: AllUser,
+        session: SessionDep,
+        search: str = None,
+        page: int = 1,
+        subject_id: Optional[str] = None,
+        teacher_id: Optional[str] = None,
+        status: Optional[str] = None,
+        due_date: Optional[str] = None
+):
     user, role = current_user
-    if role == "admin":
-        all_exams = getAllAssignmentsIsDeleteFalse(session, search, page)
-    elif role == "teacher":
-        all_exams = getAllAssignmentsOfTeacherIsDeleteFalse(user.id, session, search, page)
-    elif role == "student":
-        all_exams = getAllAssignmentsOfClassIsDeleteFalse(user.class_id, session, search, page)
-    else:
-        all_exams = getAllAssignmentsOfParentIsDeleteFalse(user.id, session, search, page)
 
-    return all_exams
+    valid_statuses = ["active", "upcoming", "overdue"]
+    if status and status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+
+    if role == "admin":
+        all_assignments = getAllAssignmentsIsDeleteFalse(
+            session, search, page, subject_id, teacher_id, status, due_date
+        )
+    elif role == "teacher":
+        all_assignments = getAllAssignmentsOfTeacherIsDeleteFalse(
+            user.id, session, search, page, subject_id, teacher_id, status, due_date
+        )
+    elif role == "student":
+        all_assignments = getAllAssignmentsOfClassIsDeleteFalse(
+            user.class_id, session, search, page, subject_id, teacher_id, status, due_date
+        )
+    else:
+        all_assignments = getAllAssignmentsOfParentIsDeleteFalse(
+            user.id, session, search, page, subject_id, teacher_id, status, due_date
+        )
+
+    return all_assignments
 
 
 @router.get("/getById/{assignmentId}", response_model=AssignmentRead)
@@ -107,16 +129,26 @@ def getById(current_user: AllUser, session: SessionDep, assignmentId: uuid.UUID)
         )
 
 
-@router.get("/teacher/{teacherId}", response_model=List[AssignmentRead])
-def getAllAssignmentOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
-                         page: int = 1):
-    all_exams = getAllAssignmentsOfTeacherIsDeleteFalse(teacherId, session, search, page)
+@router.get("/teacher/{teacherId}", response_model=PaginatedAssignmentResponse)
+def getAllAssignmentOfTeacher(
+        teacherId: uuid.UUID,
+        current_user: CurrentUser,
+        session: SessionDep,
+        search: str = None,
+        page: int = 1,
+        subject_id: Optional[str] = None,
+        status: Optional[str] = None,
+        due_date: Optional[str] = None
+):
+    all_exams = getAllAssignmentsOfTeacherIsDeleteFalse(
+            teacherId, session, search, page, subject_id, status, due_date
+        )
     return all_exams
 
 
-@router.get("/class/{classId}", response_model=List[AssignmentRead])
+@router.get("/class/{classId}", response_model=PaginatedAssignmentResponse)
 def getAllAssignmentOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
-                       page: int = 1):
+                            page: int = 1):
     all_exams = getAllAssignmentsOfClassIsDeleteFalse(classId, session, search, page)
     return all_exams
 
