@@ -11,7 +11,7 @@ from starlette import status
 
 from core.config import settings
 from models import Lesson, Teacher, Class, Student, Subject, Exam, Assignment, Attendance, Parent
-from schemas import LessonSave, LessonUpdate
+from schemas import LessonSave, LessonUpdate, PaginatedLessonResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -35,6 +35,16 @@ def addSearchOption(query: Select, search: str):
 def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Lesson.id.distinct()))
+        .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
+        .join(Class, onclause=(Lesson.class_id == Class.id))
+        .where(Lesson.is_delete == False)
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Lesson)
         .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
@@ -45,7 +55,17 @@ def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_lessons = session.exec(query).unique().all()
-    return all_lessons
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedLessonResponse(
+        data=all_lessons,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllLessonOfCurrentWeekIsDeleteFalse(session: Session, week_start: datetime, week_end: datetime):
@@ -83,21 +103,56 @@ def getLessonById(lessonId: uuid.UUID, session: Session):
     return lesson_detail
 
 
-def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int):
+def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int,
+                                       withPagination: bool = True):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    query = (
-        select(Lesson)
-        .where(
-            Lesson.teacher_id == teacherId,
-            Lesson.is_delete == False
+    if (not withPagination):
+        query = (
+            select(Lesson)
+            .where(
+                Lesson.teacher_id == teacherId,
+                Lesson.is_delete == False
+            )
         )
-    )
 
-    query = addSearchOption(query, search)
-    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
-    all_lessons = session.exec(query).unique().all()
-    return all_lessons
+        all_lessons = session.exec(query).unique().all()
+
+        return all_lessons
+
+    else:
+        count_query = (
+            select(func.count(Lesson.id.distinct()))
+            .where(
+                Lesson.teacher_id == teacherId,
+                Lesson.is_delete == False
+            )
+        )
+
+        count_query = addSearchOption(count_query, search)
+        total_count = session.exec(count_query).one()
+
+        query = (
+            select(Lesson)
+            .where(
+                Lesson.teacher_id == teacherId,
+                Lesson.is_delete == False
+            )
+        )
+
+        query = addSearchOption(query, search)
+        query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
+        all_lessons = session.exec(query).unique().all()
+        total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+        return PaginatedLessonResponse(
+            data=all_lessons,
+            total_count=total_count,
+            page=page,
+            total_pages=total_pages,
+            has_next=page < total_pages,
+            has_prev=page > 1
+        )
 
 
 def getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse(teacherId: uuid.UUID, session: Session, week_start: datetime,
@@ -147,6 +202,17 @@ def countAllLessonOfStudent(studentId: uuid.UUID, session: Session):
 def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Lesson.id.distinct()))
+        .where(
+            Lesson.class_id == classId,
+            Lesson.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Lesson)
         .where(
@@ -159,7 +225,16 @@ def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, searc
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_lessons = session.exec(query).unique().all()
-    return all_lessons
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedLessonResponse(
+        data=all_lessons,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllLessonOfClassOfCurrentWeekIsDeleteFalse(classId: uuid.UUID, session: Session, week_start: datetime,
@@ -234,6 +309,19 @@ def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user: 
 def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Lesson.id.distinct()))
+        .join(Class, onclause=(Class.id == Lesson.class_id))
+        .join(Student, onclause=(Student.class_id == Class.id))
+        .where(
+            Student.parent_id == parentId,
+            Lesson.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Lesson)
         .join(Class, onclause=(Class.id == Lesson.class_id))
@@ -248,7 +336,16 @@ def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, sea
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_lessons = session.exec(query).unique().all()
-    return all_lessons
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedLessonResponse(
+        data=all_lessons,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def lessonSave(lesson: LessonSave, session: Session):

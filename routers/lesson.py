@@ -9,7 +9,7 @@ from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIs
     countAllLessonOfStudent, lessonSave, lessonUpdate, lessonSoftDelete, getLessonById, \
     getAllLessonOfCurrentWeekIsDeleteFalse, getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse, \
     getAllLessonOfClassOfCurrentWeekIsDeleteFalse, getAllLessonOfStudentOfCurrentWeekIsDeleteFalse
-from schemas import LessonRead, SaveResponse, LessonSave, LessonUpdate, LessonDeleteResponse
+from schemas import LessonRead, SaveResponse, LessonSave, LessonUpdate, LessonDeleteResponse, PaginatedLessonResponse
 from datetime import datetime, date, timedelta
 
 router = APIRouter(
@@ -17,7 +17,7 @@ router = APIRouter(
 )
 
 
-@router.get("/getAll", response_model=List[LessonRead])
+@router.get("/getAll", response_model=PaginatedLessonResponse)
 def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
     user, role = current_user
     if role == "admin":
@@ -152,10 +152,16 @@ def getById(lessonId: uuid.UUID, current_user: AllUser, session: SessionDep):
         )
 
 
-@router.get("/teacher/{teacherId}", response_model=List[LessonRead])
-def getAllLessonOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
-                          page: int = 1):
+@router.get("/teacher/{teacherId}", response_model=PaginatedLessonResponse)
+def getLessonOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
+                       page: int = 1):
     all_lessons = getAllLessonOfTeacherIsDeleteFalse(teacherId, session, search, page)
+    return all_lessons
+
+
+@router.get("/teacher/weekly/{teacherId}", response_model=List[LessonRead])
+def getAllLessonOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep):
+    all_lessons = getAllLessonOfTeacherIsDeleteFalse(teacherId, session, None, 1, False)
     return all_lessons
 
 

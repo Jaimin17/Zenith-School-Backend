@@ -50,7 +50,7 @@ def getAllStudents(current_user: ParentOrTeacherOrAdminUser, session: SessionDep
     return all_students
 
 
-@router.get("/{teacherId}", response_model=List[StudentRead])
+@router.get("/byTeacher/{teacherId}", response_model=PaginatedStudentResponse)
 def getStudentByTeacherId(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                           page: int = 1):
     all_students = getAllStudentsOfTeacherAndIsDeleteFalse(session, teacherId, search, page)

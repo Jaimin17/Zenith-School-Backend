@@ -265,6 +265,7 @@ class ClassDeleteResponse(SQLModel):
 class TeacherRead(TeacherBase):
     subjects: List[SubjectBase] = []
     classes: List[ClassBase] = []
+    lessons: List[LessonBase] = []
 
 
 class PaginatedTeacherResponse(PaginatedBaseResponse):
@@ -368,6 +369,10 @@ class SubjectSaveResponse(SaveResponse):
 
 class LessonRead(LessonBase):
     teacher: Optional[TeacherBase] = None
+
+
+class PaginatedLessonResponse(PaginatedBaseResponse):
+    data: List[LessonRead]
 
 
 class LessonSave(SQLModel):
