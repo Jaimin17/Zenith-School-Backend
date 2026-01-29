@@ -258,7 +258,7 @@ def getAllLessonOfClassOfCurrentWeekIsDeleteFalse(classId: uuid.UUID, session: S
     return all_lessons
 
 
-def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user: Parent, session: Session,
+def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user, role: str, session: Session,
                                                     week_start: datetime, week_end: datetime):
     query = (
         select(Lesson)
@@ -269,30 +269,52 @@ def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user: 
             selectinload(Lesson.related_class),
             selectinload(Lesson.subject)
         )
-        .where(
+    )
+
+    if role == "parent":
+        query = query.where(
+                and_(
+                    Student.id == studentId,
+                    Student.parent_id == user.id,
+                    Student.is_delete == False,
+                    Lesson.is_delete == False,
+                    Lesson.start_time >= week_start,
+                    Lesson.end_time <= week_end
+                )
+            )
+    else:
+        query = query.where(
             and_(
                 Student.id == studentId,
-                Student.parent_id == user.id,
                 Student.is_delete == False,
                 Lesson.is_delete == False,
                 Lesson.start_time >= week_start,
                 Lesson.end_time <= week_end
             )
         )
-        .order_by(Lesson.start_time)
-    )
+
+
+    query = query.order_by(Lesson.start_time)
+
 
     lessons = session.exec(query).all()
 
     if not lessons:
         # Check if student exists and belongs to parent
-        student_check = session.exec(
-            select(Student).where(
+        student_query = (
+            select(Student)
+            .where(
                 Student.id == studentId,
-                Student.parent_id == user.id,
                 Student.is_delete == False
             )
-        ).first()
+        )
+
+        if role == "parent":
+            student_query = student_query.where(
+                Student.parent_id == user.id,
+            )
+
+        student_check = session.exec(student_query).first()
 
         if not student_check:
             raise HTTPException(

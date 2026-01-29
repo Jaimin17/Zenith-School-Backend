@@ -42,7 +42,7 @@ def countClassByTeacher(current_user: TeacherOrAdminUser, teacherId: uuid.UUID, 
     return total_class
 
 
-@router.get("/{supervisorId}", response_model=List[ClassRead])
+@router.get("/{supervisorId}", response_model=PaginatedClassResponse)
 def getClassesOfTeacher(supervisorId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                         page: int = 1):
     teacher_class = getAllClassOfTeacherAndIsDeleteFalse(supervisorId, session, search, page)

@@ -26,6 +26,7 @@ def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None,
         all_lessons = getAllLessonOfTeacherIsDeleteFalse(user.id, session, search, page)
     elif role == "student":
         all_lessons = getAllLessonOfClassIsDeleteFalse(user.class_id, session, search, page)
+        all_lessons = getAllLessonOfClassIsDeleteFalse(user.class_id, session, search, page)
     else:
         all_lessons = getAllLessonOfParentIsDeleteFalse(user.id, session, search, page)
     return all_lessons
@@ -57,7 +58,7 @@ def getAllOfCurrentWeek(current_user: StudentOrTeacherOrAdminUser, session: Sess
 
 
 @router.get("/getLessonForStudent/{studentId}", response_model=List[LessonRead])
-def getLessonForStudent(studentId: uuid.UUID, current_user: ParentUser, session: SessionDep):
+def getLessonForStudent(studentId: uuid.UUID, current_user: AllUser, session: SessionDep):
     user, role = current_user
 
     today: date = date.today()
@@ -71,7 +72,7 @@ def getLessonForStudent(studentId: uuid.UUID, current_user: ParentUser, session:
     week_start: datetime = datetime.combine(monday, datetime.min.time())
     week_end: datetime = datetime.combine(friday, datetime.max.time())
 
-    all_lessons = getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId, user, session, week_start, week_end)
+    all_lessons = getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId, user, role, session, week_start, week_end)
 
     return all_lessons
 

@@ -34,6 +34,11 @@ def getTeacherAnnouncements(current_user: TeacherOrAdminUser, teacherId: uuid.UU
     announcements = getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, None, page)
     return announcements
 
+@router.get("/student/{studentId}", response_model=PaginatedAnnouncementResponse)
+def getStudentAnnouncements(current_user: TeacherOrAdminUser, studentId: uuid.UUID, session: SessionDep, page: int = 1):
+    announcements = getAllAnnouncementsByStudentAndIsDeleteFalse(studentId, session, None, page)
+    return announcements
+
 
 @router.get("/getById/{announcementId}", response_model=AnnouncementRead)
 def getById(current_user: AllUser, session: SessionDep, announcementId: uuid.UUID):
