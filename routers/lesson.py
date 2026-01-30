@@ -178,7 +178,7 @@ def countLessonByStudent(studentId: uuid.UUID, current_user: StudentOrTeacherOrA
     return total_lesson
 
 
-@router.get("/class/{classId}", response_model=List[LessonRead])
+@router.get("/class/{classId}", response_model=PaginatedLessonResponse)
 def getAllLessonOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                         page: int = 1):
     all_lessons = getAllLessonOfClassIsDeleteFalse(classId, session, search, page)

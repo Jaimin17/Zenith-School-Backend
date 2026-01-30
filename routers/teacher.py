@@ -48,7 +48,7 @@ def getFullTeacherList(current_user: AllUser, session: SessionDep):
     return all_teachers
 
 
-@router.get("/{classId}", response_model=List[TeacherRead])
+@router.get("/{classId}", response_model=PaginatedTeacherResponse)
 def getTeacherByClassId(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                         page: int = 1):
     all_teachers = getAllTeachersOfClassAndIsDeleteFalse(classId, session, search, page)

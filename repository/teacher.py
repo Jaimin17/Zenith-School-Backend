@@ -11,6 +11,7 @@ import os
 from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
 from models import Teacher, Lesson, Subject, Class
+from schemas import PaginatedTeacherResponse
 
 
 def addSearchOption(query: Select, search: str):
@@ -75,6 +76,21 @@ def getTotalTeachersCount(session: Session, search: str = None) -> int:
 def getAllTeachersOfClassAndIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
+    count_query = (
+        select(func.count(Teacher.id.distinct()))
+        .join(
+            Lesson,
+            onclause=(Lesson.teacher_id == Teacher.id)
+        )
+        .where(
+            Lesson.class_id == classId,
+            Teacher.is_delete == False,
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
     query = (
         select(Teacher)
         .join(
@@ -95,7 +111,17 @@ def getAllTeachersOfClassAndIsDeleteFalse(classId: uuid.UUID, session: Session, 
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     results = session.exec(query).all()
-    return results
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedTeacherResponse(
+        data=results,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def findTeacherById(teacherId: uuid.UUID, session: Session):
