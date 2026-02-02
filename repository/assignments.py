@@ -164,14 +164,14 @@ def getAssignmentById(session: Session, assignmentId: uuid.UUID):
 
 
 def getAllAssignmentsOfTeacherIsDeleteFalse(
-    teacherId: uuid.UUID,
-    session: Session,
-    search: str,
-    page: int,
-    subject_id: Optional[str] = None,
-    teacher_id: Optional[str] = None,
-    status: Optional[str] = None,
-    due_date: Optional[str] = None
+        teacherId: uuid.UUID,
+        session: Session,
+        search: str,
+        page: int,
+        subject_id: Optional[str] = None,
+        teacher_id: Optional[str] = None,
+        status: Optional[str] = None,
+        due_date: Optional[str] = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
@@ -321,6 +321,69 @@ def getAllAssignmentsOfClassIsDeleteFalse(
         .where(
             Lesson.class_id == classId,
             Assignment.is_delete == False,
+        )
+    )
+
+    query = addSearchOption(query, search)
+    # Lesson IS already joined, so pass True
+    query = apply_assignment_filters(
+        query, subject_id, teacher_id, status, due_date, lesson_already_joined=True
+    )
+    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
+    all_assignments = session.exec(query).unique().all()
+
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedAssignmentResponse(
+        data=all_assignments,
+        total_count=total_count,
+        total_pages=total_pages,
+        page=page,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
+
+
+def getAllAssignmentsOfStudentIsDeleteFalse(
+        studentId: uuid.UUID,
+        session: Session,
+        search: str,
+        page: int,
+        subject_id: Optional[str] = None,
+        teacher_id: Optional[str] = None,
+        status: Optional[str] = None,
+        due_date: Optional[str] = None
+):
+    offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    # Count query - Lesson is already joined
+    count_query = (
+        select(func.count(Assignment.id.distinct()))
+        .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
+        .join(Student, onclause=(Student.class_id == Lesson.class_id))
+        .where(
+            Student.id == studentId,
+            Student.is_delete == False,
+            Assignment.is_delete == False
+        )
+    )
+
+    count_query = addSearchOption(count_query, search)
+    # Lesson IS already joined, so pass True
+    count_query = apply_assignment_filters(
+        count_query, subject_id, teacher_id, status, due_date, lesson_already_joined=True
+    )
+    total_count = session.exec(count_query).one()
+
+    # Data query - Lesson is already joined
+    query = (
+        select(Assignment)
+        .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
+        .join(Student, onclause=(Student.class_id == Lesson.class_id))
+        .where(
+            Student.id == studentId,
+            Student.is_delete == False,
+            Assignment.is_delete == False
         )
     )
 

@@ -138,6 +138,51 @@ def getAllExamsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search
     )
 
 
+def getAllExamsOfStudentIsDeleteFalse(studentId: uuid.UUID, session: Session, search: str, page: int):
+    offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    # Count query
+    count_query = (
+        select(func.count(Exam.id.distinct()))
+        .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
+        .join(Student, onclause=(Student.class_id == Lesson.class_id))
+        .where(
+            Student.id == studentId,
+            Student.is_delete == False,
+            Exam.is_delete == False,
+        )
+    )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
+    # Data query
+    query = (
+        select(Exam)
+        .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
+        .join(Student, onclause=(Student.class_id == Lesson.class_id))
+        .where(
+            Student.id == studentId,
+            Student.is_delete == False,
+            Exam.is_delete == False,
+        )
+    )
+    query = addSearchOption(query, search)
+    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
+    all_exams = session.exec(query).unique().all()
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedExamResponse(
+        data=all_exams,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
+
+
 def getAllExamsOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 

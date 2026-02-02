@@ -8,7 +8,7 @@ from models import Assignment
 from repository.assignments import getAllAssignmentsIsDeleteFalse, getAllAssignmentsOfTeacherIsDeleteFalse, \
     getAllAssignmentsOfClassIsDeleteFalse, getAllAssignmentsOfParentIsDeleteFalse, assignmentSaveWithPdf, \
     assignmentUpdate, \
-    assignmentSoftDelete, getAssignmentById
+    assignmentSoftDelete, getAssignmentById, getAllAssignmentsOfStudentIsDeleteFalse
 from schemas import AssignmentRead, SaveResponse, AssignmentSave, AssignmentUpdate, AssignmentDeleteResponse, \
     PaginatedAssignmentResponse
 
@@ -141,8 +141,8 @@ def getAllAssignmentOfTeacher(
         due_date: Optional[str] = None
 ):
     all_exams = getAllAssignmentsOfTeacherIsDeleteFalse(
-            teacherId, session, search, page, subject_id, status, due_date
-        )
+        teacherId, session, search, page, subject_id, status, due_date
+    )
     return all_exams
 
 
@@ -158,7 +158,25 @@ def getAllAssignmentOfClass(
         status: Optional[str] = None,
         due_date: Optional[str] = None
 ):
-    all_exams = getAllAssignmentsOfClassIsDeleteFalse(classId, session, search, page, subject_id, teacher_id, status, due_date)
+    all_exams = getAllAssignmentsOfClassIsDeleteFalse(classId, session, search, page, subject_id, teacher_id, status,
+                                                      due_date)
+    return all_exams
+
+
+@router.get("/student/{studentId}", response_model=PaginatedAssignmentResponse)
+def getAllAssignmentOfStudent(
+        studentId: uuid.UUID,
+        current_user: CurrentUser,
+        session: SessionDep,
+        search: str = None,
+        page: int = 1,
+        subject_id: Optional[str] = None,
+        teacher_id: Optional[str] = None,
+        status: Optional[str] = None,
+        due_date: Optional[str] = None
+):
+    all_exams = getAllAssignmentsOfStudentIsDeleteFalse(studentId, session, search, page, subject_id, teacher_id,
+                                                        status, due_date)
     return all_exams
 
 
