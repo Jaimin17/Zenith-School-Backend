@@ -147,9 +147,18 @@ def getAllAssignmentOfTeacher(
 
 
 @router.get("/class/{classId}", response_model=PaginatedAssignmentResponse)
-def getAllAssignmentOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
-                            page: int = 1):
-    all_exams = getAllAssignmentsOfClassIsDeleteFalse(classId, session, search, page)
+def getAllAssignmentOfClass(
+        classId: uuid.UUID,
+        current_user: CurrentUser,
+        session: SessionDep,
+        search: str = None,
+        page: int = 1,
+        subject_id: Optional[str] = None,
+        teacher_id: Optional[str] = None,
+        status: Optional[str] = None,
+        due_date: Optional[str] = None
+):
+    all_exams = getAllAssignmentsOfClassIsDeleteFalse(classId, session, search, page, subject_id, teacher_id, status, due_date)
     return all_exams
 
 

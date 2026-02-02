@@ -50,10 +50,19 @@ def getAllResultsOfClass(classId: uuid.UUID, current_user: CurrentUser, session:
     return all_results
 
 
-@router.get("/student/{studentId}", response_model=List[ResultRead])
-def getAllResultsOfStudent(studentId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
-                           page: int = 1):
-    all_results = getAllResultsOfStudentIsDeleteFalse(studentId, session, search, page)
+@router.get("/student/{studentId}", response_model=PaginatedResultResponse)
+def getAllResultsOfStudent(
+        studentId: uuid.UUID,
+        current_user: CurrentUser,
+        session: SessionDep,
+        search: str = None,
+        page: int = 1,
+        class_id: str = None,  # New
+        exam_id: str = None,  # New
+        assignment_id: str = None,  # New
+        type: str = None  # "exam" or "assignment"  # New
+):
+    all_results = getAllResultsOfStudentIsDeleteFalse(studentId, session, search, page, class_id, exam_id, assignment_id, type)
     return all_results
 
 
