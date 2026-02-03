@@ -3,17 +3,197 @@ from datetime import date, timedelta, datetime, time
 from typing import List, Optional
 
 from fastapi import APIRouter, Query
-
-from deps import AdminUser, StudentOrTeacherOrAdminUser, TeacherOrAdminUser
+from fastapi import HTTPException
+from deps import AdminUser, StudentOrTeacherOrAdminUser, TeacherOrAdminUser, StudentOrParentUser, StudentOrParentOrAdminUser, ParentUser
 from core.database import SessionDep
-from repository.attendance import attendanceOfWeek, attendanceOfStudentOfCurrentYear, attendanceBulkSave, \
-    attendanceSave, attendanceUpdate, attendanceSoftDelete, getAttendanceByLesson
-from schemas import AttendanceBase, AttendanceBulkSaveResponse, AttendanceBulkSave, AttendanceSaveResponse, \
-    AttendanceSave, AttendanceUpdate, AttendanceListResponse
+from repository.attendance import (
+    attendanceOfWeek, attendanceOfStudentOfCurrentYear, attendanceBulkSave,
+    attendanceSave, attendanceUpdate, attendanceSoftDelete, getAttendanceByLesson,
+    getDashboardSummary, getClasswiseSummary, getClassAttendanceDetail,
+    getStudentMonthlyAttendance, getCalendarHeatmap, getTeacherClasses,
+    getParentChildrenAttendance
+)
+from schemas import (
+    AttendanceBase, AttendanceBulkSaveResponse, AttendanceBulkSave, AttendanceSaveResponse,
+    AttendanceSave, AttendanceUpdate, AttendanceListResponse, AttendanceDashboardSummary,
+    ClasswiseAttendanceResponse, ClassAttendanceDetailResponse, StudentMonthlyAttendance,
+    CalendarHeatmapResponse, TeacherClassSummary
+)
 
 router = APIRouter(
     prefix="/attendance",
 )
+
+
+# ===================== Admin Dashboard Endpoints =====================
+
+@router.get("/dashboard/summary", response_model=AttendanceDashboardSummary)
+def getAttendanceDashboardSummary(
+    current_user: AdminUser,
+    session: SessionDep,
+    target_date: Optional[date] = Query(None, description="Date for summary (defaults to today)")
+):
+    """
+    Admin Dashboard: Get attendance summary for a specific date.
+    Returns total classes, classes with attendance, pending, present/absent counts, attendance rate.
+    """
+    if target_date is None:
+        target_date = date.today()
+    return getDashboardSummary(target_date, session)
+
+
+@router.get("/dashboard/classes", response_model=ClasswiseAttendanceResponse)
+def getClasswiseAttendanceSummary(
+    current_user: AdminUser,
+    session: SessionDep,
+    target_date: Optional[date] = Query(None, description="Date for summary (defaults to today)")
+):
+    """
+    Admin Dashboard: Get class-wise attendance summary for a specific date.
+    Click on a date in dashboard -> shows all classes with their attendance stats.
+    """
+    if target_date is None:
+        target_date = date.today()
+    return getClasswiseSummary(target_date, session)
+
+
+@router.get("/class/{class_id}", response_model=ClassAttendanceDetailResponse)
+def getClassAttendance(
+    class_id: uuid.UUID,
+    current_user: TeacherOrAdminUser,
+    session: SessionDep,
+    target_date: Optional[date] = Query(None, description="Date for attendance (defaults to today)")
+):
+    """
+    Get detailed attendance for a specific class on a specific date.
+    Admin: Can view any class.
+    Teacher: Can only view classes they teach (verified in repository).
+    Returns all students with their attendance status (present/absent/not marked).
+    """
+    if target_date is None:
+        target_date = date.today()
+    return getClassAttendanceDetail(class_id, target_date, session)
+
+
+# ===================== Teacher View Endpoints =====================
+
+@router.get("/teacher/classes", response_model=List[TeacherClassSummary])
+def getTeacherClassesSummary(
+    current_user: TeacherOrAdminUser,
+    session: SessionDep,
+    target_date: Optional[date] = Query(None, description="Date for attendance status (defaults to today)")
+):
+    """
+    Teacher View: Get list of classes assigned to the teacher with attendance status.
+    Shows which classes have attendance marked for the specified date.
+    """
+    user, role = current_user
+    if target_date is None:
+        target_date = date.today()
+    
+    # For admin, this would need a teacher_id parameter
+    # For teacher, use their own ID
+    if role == "teacher":
+        return getTeacherClasses(user.id, target_date, session)
+    else:
+        # Admin can optionally pass a teacher_id as query param in future
+        # For now, return empty list for admin (they use dashboard instead)
+        return []
+
+
+# ===================== Student/Parent View Endpoints =====================
+
+@router.get("/student/{student_id}/monthly", response_model=StudentMonthlyAttendance)
+def getStudentMonthlyAttendanceRecords(
+    student_id: uuid.UUID,
+    current_user: StudentOrParentOrAdminUser,
+    session: SessionDep,
+    year: Optional[int] = Query(None, description="Year (defaults to current year)"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Month 1-12 (defaults to current month)")
+):
+    """
+    Get monthly attendance records for a specific student.
+    Student: Can only view their own attendance.
+    Parent: Can view attendance of their children.
+    Admin: Can view any student's attendance.
+    """
+    user, role = current_user
+    
+    # Validate access
+    if role == "student" and user.id != student_id:
+        raise HTTPException(status_code=403, detail="You can only view your own attendance")
+    elif role == "parent":
+        from sqlmodel import select
+        from models import Student
+        # Verify this student belongs to the parent
+        student = session.exec(select(Student).where(Student.id == student_id, Student.is_delete == False)).first()
+        if not student or student.parent_id != user.id:
+            raise HTTPException(status_code=403, detail="You can only view attendance of your children")
+    
+    if year is None:
+        year = date.today().year
+    if month is None:
+        month = date.today().month
+    
+    return getStudentMonthlyAttendance(student_id, year, month, session)
+
+
+@router.get("/student/{student_id}/calendar", response_model=CalendarHeatmapResponse)
+def getStudentCalendarHeatmap(
+    student_id: uuid.UUID,
+    current_user: StudentOrParentOrAdminUser,
+    session: SessionDep,
+    year: Optional[int] = Query(None, description="Year (defaults to current year)"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Month 1-12 (defaults to current month)")
+):
+    """
+    Get calendar heatmap data for a student's attendance.
+    Returns daily attendance rates for color-coded calendar visualization.
+    Green = present, Red = absent, Gray = no records.
+    """
+    user, role = current_user
+    
+    # Validate access
+    if role == "student" and user.id != student_id:
+        raise HTTPException(status_code=403, detail="You can only view your own attendance")
+    elif role == "parent":
+        from sqlmodel import select
+        from models import Student
+        # Verify this student belongs to the parent
+        student = session.exec(select(Student).where(Student.id == student_id, Student.is_delete == False)).first()
+        if not student or student.parent_id != user.id:
+            raise HTTPException(status_code=403, detail="You can only view attendance of your children")
+    
+    if year is None:
+        year = date.today().year
+    if month is None:
+        month = date.today().month
+    
+    return getCalendarHeatmap(student_id, year, month, session)
+
+
+@router.get("/parent/children", response_model=List[StudentMonthlyAttendance])
+def getParentChildrenAttendanceSummary(
+    current_user: ParentUser,
+    session: SessionDep,
+    year: Optional[int] = Query(None, description="Year (defaults to current year)"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Month 1-12 (defaults to current month)")
+):
+    """
+    Parent View: Get monthly attendance for all children.
+    Returns attendance summary for each child in one call.
+    """
+    user, role = current_user
+    
+    if year is None:
+        year = date.today().year
+    if month is None:
+        month = date.today().month
+    
+    return getParentChildrenAttendance(user.id, year, month, session)
+
+
+# ===================== Existing Endpoints (kept for backward compatibility) =====================
 
 
 @router.get("/getAttendanceOfCurrentWeek", response_model=List[AttendanceBase])

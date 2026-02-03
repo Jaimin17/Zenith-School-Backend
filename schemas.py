@@ -584,3 +584,117 @@ class UsersCount(SQLModel):
     teachers: int
     students: CountStudent
     parents: int
+
+
+# ===================== Attendance Dashboard & Summary Schemas =====================
+
+class AttendanceDashboardSummary(SQLModel):
+    """Admin dashboard summary for a specific date"""
+    date: date
+    total_classes: int
+    classes_with_attendance: int
+    pending_classes: int
+    total_students: int
+    present_count: int
+    absent_count: int
+    attendance_rate: float  # Percentage
+
+
+class ClassAttendanceSummary(SQLModel):
+    """Class-level attendance summary"""
+    class_id: uuid.UUID
+    class_name: str
+    grade_level: Optional[int] = None
+    total_students: int
+    present_count: int
+    absent_count: int
+    not_marked_count: int
+    attendance_rate: float  # Percentage
+    has_attendance: bool  # Whether attendance was taken for this class
+
+
+class ClasswiseAttendanceResponse(SQLModel):
+    """Response for class-wise attendance summary"""
+    date: date
+    classes: List[ClassAttendanceSummary]
+    total_classes: int
+
+
+class StudentAttendanceRecord(SQLModel):
+    """Individual attendance record for a student"""
+    id: uuid.UUID
+    date: date
+    present: bool
+    lesson_id: uuid.UUID
+    lesson_name: str
+    subject_name: Optional[str] = None
+
+
+class StudentMonthlyAttendance(SQLModel):
+    """Monthly attendance for a single student"""
+    student_id: uuid.UUID
+    student_name: str
+    month: int
+    year: int
+    total_days: int
+    present_days: int
+    absent_days: int
+    attendance_rate: float
+    records: List[StudentAttendanceRecord]
+
+
+class CalendarDayData(SQLModel):
+    """Attendance data for a single day (for calendar heatmap)"""
+    date: date
+    present_count: int
+    absent_count: int
+    total_records: int
+    attendance_rate: float  # 0-100
+
+
+class CalendarHeatmapResponse(SQLModel):
+    """Response for calendar heatmap view"""
+    student_id: Optional[uuid.UUID] = None
+    student_name: Optional[str] = None
+    month: int
+    year: int
+    days: List[CalendarDayData]
+    monthly_summary: dict  # Overall monthly stats
+
+
+class ClassStudentAttendance(SQLModel):
+    """Student attendance status within a class for a specific date"""
+    student_id: uuid.UUID
+    student_name: str
+    username: str
+    attendance_id: Optional[uuid.UUID] = None
+    present: Optional[bool] = None  # None means not marked yet
+    marked_at: Optional[datetime] = None
+
+
+class ClassAttendanceDetailResponse(SQLModel):
+    """Detailed attendance for a specific class on a specific date"""
+    class_id: uuid.UUID
+    class_name: str
+    date: date
+    lesson_id: Optional[uuid.UUID] = None
+    lesson_name: Optional[str] = None
+    total_students: int
+    present_count: int
+    absent_count: int
+    not_marked_count: int
+    students: List[ClassStudentAttendance]
+
+
+class TeacherClassSummary(SQLModel):
+    """Class summary for teacher's view"""
+    class_id: uuid.UUID
+    class_name: str
+    lesson_id: uuid.UUID
+    lesson_name: str
+    subject_name: Optional[str] = None
+    day: str
+    total_students: int
+    attendance_marked: bool
+    present_count: int
+    absent_count: int
