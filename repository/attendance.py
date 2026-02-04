@@ -8,13 +8,14 @@ from psycopg import IntegrityError
 from sqlalchemy import func, case, and_, distinct
 from sqlmodel import Session, select
 
-from models import Attendance, Lesson, Student, Class, Subject, Teacher
+from models import Attendance, Lesson, Student, Class, Subject, Teacher, Day
 from schemas import (
     AttendanceBulkSave, AttendanceSave, AttendanceUpdate, AttendanceDetail,
     AttendanceDashboardSummary, ClassAttendanceSummary, ClasswiseAttendanceResponse,
     StudentMonthlyAttendance, StudentAttendanceRecord, CalendarDayData,
     CalendarHeatmapResponse, ClassStudentAttendance, ClassAttendanceDetailResponse,
-    TeacherClassSummary
+    TeacherClassSummary, StudentRosterItem, LessonRosterResponse, LessonForDateItem,
+    LessonsForDateResponse, AttendanceTakeRequest, AttendanceTakeResponse
 )
 
 
@@ -862,3 +863,419 @@ def getParentChildrenAttendance(
         results.append(monthly_attendance)
 
     return results
+
+
+# ===================== Take Attendance Workflow Functions =====================
+
+def getLessonRoster(
+    lesson_id: uuid.UUID,
+    target_date: date,
+    user_id: uuid.UUID,
+    role: str,
+    session: Session
+) -> LessonRosterResponse:
+    """
+    Get the student roster for a lesson to take attendance.
+    Returns all students in the class with their existing attendance status (if any).
+    """
+    # Verify lesson exists
+    lesson_query = (
+        select(Lesson, Class, Subject)
+        .join(Class, Lesson.class_id == Class.id)
+        .outerjoin(Subject, Lesson.subject_id == Subject.id)
+        .where(Lesson.id == lesson_id, Lesson.is_delete == False)
+    )
+    result = session.exec(lesson_query).first()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Lesson not found with ID: {lesson_id}")
+    
+    lesson, cls, subject = result
+    
+    # Authorization check for teachers
+    if role == "teacher" and lesson.teacher_id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not authorized to take attendance for this lesson."
+        )
+    
+    # Get all students in this class
+    students_query = (
+        select(Student)
+        .where(Student.class_id == cls.id, Student.is_delete == False)
+        .order_by(Student.first_name, Student.last_name)
+    )
+    students = session.exec(students_query).all()
+    
+    # Get existing attendance for this lesson on this date
+    attendance_query = (
+        select(Attendance)
+        .where(
+            Attendance.lesson_id == lesson_id,
+            func.date(Attendance.attendance_date) == target_date,
+            Attendance.is_delete == False
+        )
+    )
+    existing_attendance = session.exec(attendance_query).all()
+    
+    # Build attendance map
+    attendance_map = {att.student_id: att for att in existing_attendance}
+    
+    # Build roster
+    roster_items = []
+    marked_count = 0
+    
+    for student in students:
+        att = attendance_map.get(student.id)
+        if att:
+            marked_count += 1
+            roster_items.append(StudentRosterItem(
+                student_id=student.id,
+                student_name=f"{student.first_name} {student.last_name}",
+                username=student.username,
+                img=student.img,
+                attendance_id=att.id,
+                present=att.present
+            ))
+        else:
+            roster_items.append(StudentRosterItem(
+                student_id=student.id,
+                student_name=f"{student.first_name} {student.last_name}",
+                username=student.username,
+                img=student.img,
+                attendance_id=None,
+                present=None
+            ))
+    
+    return LessonRosterResponse(
+        lesson_id=lesson.id,
+        lesson_name=lesson.name,
+        class_id=cls.id,
+        class_name=cls.name,
+        subject_name=subject.name if subject else None,
+        target_date=target_date,
+        total_students=len(students),
+        attendance_exists=marked_count > 0,
+        marked_count=marked_count,
+        students=roster_items
+    )
+
+
+def getLessonsForDate(
+    target_date: date,
+    class_id: Optional[uuid.UUID],
+    user_id: uuid.UUID,
+    role: str,
+    session: Session
+) -> LessonsForDateResponse:
+    """
+    Get lessons for a specific date, optionally filtered by class.
+    For teachers, only shows their assigned lessons.
+    """
+    # Get day of week from date
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    day_of_week = day_names[target_date.weekday()]
+    
+    # Map to Day enum
+    day_enum_map = {
+        "Monday": Day.MONDAY,
+        "Tuesday": Day.TUESDAY,
+        "Wednesday": Day.WEDNESDAY,
+        "Thursday": Day.THURSDAY,
+        "Friday": Day.FRIDAY,
+        "Saturday": Day.SATURDAY,
+    }
+    
+    # If it's Sunday, no lessons
+    if day_of_week == "Sunday":
+        return LessonsForDateResponse(
+            date=target_date,
+            day_of_week=day_of_week,
+            total_lessons=0,
+            lessons=[]
+        )
+    
+    day_enum = day_enum_map.get(day_of_week)
+    
+    # Build query
+    lessons_query = (
+        select(Lesson, Class, Subject, Teacher)
+        .join(Class, Lesson.class_id == Class.id)
+        .outerjoin(Subject, Lesson.subject_id == Subject.id)
+        .outerjoin(Teacher, Lesson.teacher_id == Teacher.id)
+        .where(
+            Lesson.day == day_enum,
+            Lesson.is_delete == False,
+            Class.is_delete == False
+        )
+    )
+    
+    # Filter by class if provided
+    if class_id:
+        lessons_query = lessons_query.where(Lesson.class_id == class_id)
+    
+    # Filter by teacher if role is teacher
+    if role == "teacher":
+        lessons_query = lessons_query.where(Lesson.teacher_id == user_id)
+    
+    lessons_query = lessons_query.order_by(Class.name, Lesson.start_time)
+    
+    results = session.exec(lessons_query).all()
+    
+    lesson_items = []
+    for lesson, cls, subject, teacher in results:
+        # Count students in this class
+        student_count_query = (
+            select(func.count(Student.id))
+            .where(Student.class_id == cls.id, Student.is_delete == False)
+        )
+        students_count = session.exec(student_count_query).first() or 0
+        
+        # Get attendance status for this lesson on this date
+        attendance_query = (
+            select(
+                func.count(Attendance.id).label('total'),
+                func.sum(case((Attendance.present == True, 1), else_=0)).label('present'),
+                func.sum(case((Attendance.present == False, 1), else_=0)).label('absent')
+            )
+            .where(
+                Attendance.lesson_id == lesson.id,
+                func.date(Attendance.attendance_date) == target_date,
+                Attendance.is_delete == False
+            )
+        )
+        att_stats = session.exec(attendance_query).first()
+        
+        present_count = int(att_stats[1] or 0)
+        absent_count = int(att_stats[2] or 0)
+        marked_count = present_count + absent_count
+        
+        # Determine attendance status
+        if marked_count == 0:
+            attendance_status = "not_taken"
+        elif marked_count < students_count:
+            attendance_status = "partial"
+        else:
+            attendance_status = "complete"
+        
+        lesson_items.append(LessonForDateItem(
+            lesson_id=lesson.id,
+            lesson_name=lesson.name,
+            class_id=cls.id,
+            class_name=cls.name,
+            subject_id=subject.id if subject else None,
+            subject_name=subject.name if subject else None,
+            teacher_id=teacher.id if teacher else None,
+            teacher_name=f"{teacher.first_name} {teacher.last_name}" if teacher else None,
+            start_time=lesson.start_time,
+            end_time=lesson.end_time,
+            day=lesson.day.value if lesson.day else day_of_week,
+            attendance_status=attendance_status,
+            students_count=students_count,
+            present_count=present_count,
+            absent_count=absent_count
+        ))
+    
+    return LessonsForDateResponse(
+        date=target_date,
+        day_of_week=day_of_week,
+        total_lessons=len(lesson_items),
+        lessons=lesson_items
+    )
+
+
+def takeAttendance(
+    request: AttendanceTakeRequest,
+    user_id: uuid.UUID,
+    role: str,
+    session: Session
+) -> AttendanceTakeResponse:
+    """
+    Take or update attendance for a lesson.
+    Supports both creating new records and updating existing ones.
+    """
+    # Verify lesson exists
+    lesson_query = select(Lesson).where(Lesson.id == request.lesson_id, Lesson.is_delete == False)
+    lesson = session.exec(lesson_query).first()
+    
+    if not lesson:
+        raise HTTPException(status_code=404, detail=f"Lesson not found with ID: {request.lesson_id}")
+    
+    if not lesson.class_id:
+        raise HTTPException(status_code=400, detail="Lesson is not associated with any class.")
+    
+    # Authorization check for teachers
+    if role == "teacher" and lesson.teacher_id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not authorized to take attendance for this lesson."
+        )
+    
+    # Validate all students belong to the class
+    students_query = (
+        select(Student)
+        .where(Student.class_id == lesson.class_id, Student.is_delete == False)
+    )
+    valid_students = session.exec(students_query).all()
+    valid_student_ids = {student.id for student in valid_students}
+    
+    provided_student_ids = {record.student_id for record in request.records}
+    invalid_students = provided_student_ids - valid_student_ids
+    
+    if invalid_students:
+        raise HTTPException(
+            status_code=400,
+            detail=f"The following student IDs do not belong to this lesson's class: {', '.join(str(sid) for sid in invalid_students)}"
+        )
+    
+    # Check for duplicate student IDs in request
+    if len(provided_student_ids) != len(request.records):
+        raise HTTPException(
+            status_code=400,
+            detail="Duplicate student IDs found in the attendance records."
+        )
+    
+    # Get existing attendance records for this lesson on this date
+    existing_query = (
+        select(Attendance)
+        .where(
+            Attendance.lesson_id == request.lesson_id,
+            func.date(Attendance.attendance_date) == request.attendance_date,
+            Attendance.student_id.in_(provided_student_ids),
+            Attendance.is_delete == False
+        )
+    )
+    existing_attendance = session.exec(existing_query).all()
+    existing_map = {att.student_id: att for att in existing_attendance}
+    
+    # If attendance exists and overwrite is not allowed
+    if existing_attendance and not request.overwrite_existing:
+        existing_student_ids = [str(att.student_id) for att in existing_attendance]
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": f"Attendance already exists for {len(existing_attendance)} students on {request.attendance_date}",
+                "existing_students": existing_student_ids,
+                "hint": "Set 'overwrite_existing: true' to update existing records"
+            }
+        )
+    
+    # Process attendance records
+    created_count = 0
+    updated_count = 0
+    present_count = 0
+    absent_count = 0
+    
+    attendance_datetime = datetime.combine(
+        request.attendance_date,
+        datetime.now().time()
+    )
+    
+    for record in request.records:
+        if record.present:
+            present_count += 1
+        else:
+            absent_count += 1
+        
+        existing_att = existing_map.get(record.student_id)
+        
+        if existing_att:
+            # Update existing record
+            existing_att.present = record.present
+            existing_att.attendance_date = attendance_datetime
+            session.add(existing_att)
+            updated_count += 1
+        else:
+            # Create new record
+            new_attendance = Attendance(
+                student_id=record.student_id,
+                lesson_id=request.lesson_id,
+                attendance_date=attendance_datetime,
+                present=record.present,
+                is_delete=False
+            )
+            session.add(new_attendance)
+            created_count += 1
+    
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while saving attendance records."
+        )
+    
+    return AttendanceTakeResponse(
+        message="Attendance saved successfully",
+        lesson_id=request.lesson_id,
+        attendance_date=request.attendance_date,
+        total_students=len(request.records),
+        created_count=created_count,
+        updated_count=updated_count,
+        present_count=present_count,
+        absent_count=absent_count
+    )
+
+
+def checkAttendanceExists(
+    lesson_id: uuid.UUID,
+    target_date: date,
+    session: Session
+) -> dict:
+    """
+    Check if attendance has been taken for a lesson on a specific date.
+    Returns summary of existing attendance.
+    """
+    # Verify lesson exists
+    lesson_query = (
+        select(Lesson, Class)
+        .join(Class, Lesson.class_id == Class.id)
+        .where(Lesson.id == lesson_id, Lesson.is_delete == False)
+    )
+    result = session.exec(lesson_query).first()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Lesson not found with ID: {lesson_id}")
+    
+    lesson, cls = result
+    
+    # Count students in class
+    student_count_query = (
+        select(func.count(Student.id))
+        .where(Student.class_id == cls.id, Student.is_delete == False)
+    )
+    total_students = session.exec(student_count_query).first() or 0
+    
+    # Get attendance stats
+    attendance_query = (
+        select(
+            func.count(Attendance.id).label('total'),
+            func.sum(case((Attendance.present == True, 1), else_=0)).label('present'),
+            func.sum(case((Attendance.present == False, 1), else_=0)).label('absent')
+        )
+        .where(
+            Attendance.lesson_id == lesson_id,
+            func.date(Attendance.attendance_date) == target_date,
+            Attendance.is_delete == False
+        )
+    )
+    att_stats = session.exec(attendance_query).first()
+    
+    marked_count = int(att_stats[0] or 0)
+    present_count = int(att_stats[1] or 0)
+    absent_count = int(att_stats[2] or 0)
+    
+    return {
+        "lesson_id": str(lesson_id),
+        "lesson_name": lesson.name,
+        "class_id": str(cls.id),
+        "class_name": cls.name,
+        "date": target_date.isoformat(),
+        "attendance_exists": marked_count > 0,
+        "total_students": total_students,
+        "marked_count": marked_count,
+        "present_count": present_count,
+        "absent_count": absent_count,
+        "not_marked_count": total_students - marked_count
+    }

@@ -11,13 +11,15 @@ from repository.attendance import (
     attendanceSave, attendanceUpdate, attendanceSoftDelete, getAttendanceByLesson,
     getDashboardSummary, getClasswiseSummary, getClassAttendanceDetail,
     getStudentMonthlyAttendance, getCalendarHeatmap, getTeacherClasses,
-    getParentChildrenAttendance
+    getParentChildrenAttendance, getLessonRoster, getLessonsForDate,
+    takeAttendance, checkAttendanceExists
 )
 from schemas import (
     AttendanceBase, AttendanceBulkSaveResponse, AttendanceBulkSave, AttendanceSaveResponse,
     AttendanceSave, AttendanceUpdate, AttendanceListResponse, AttendanceDashboardSummary,
     ClasswiseAttendanceResponse, ClassAttendanceDetailResponse, StudentMonthlyAttendance,
-    CalendarHeatmapResponse, TeacherClassSummary
+    CalendarHeatmapResponse, TeacherClassSummary, LessonRosterResponse, LessonsForDateResponse,
+    AttendanceTakeRequest, AttendanceTakeResponse
 )
 
 router = APIRouter(
@@ -99,6 +101,90 @@ def getTeacherClassesSummary(
         # Admin can optionally pass a teacher_id as query param in future
         # For now, return empty list for admin (they use dashboard instead)
         return []
+
+
+# ===================== Take Attendance Workflow Endpoints =====================
+
+@router.get("/take/lessons", response_model=LessonsForDateResponse)
+def getLessonsForTakingAttendance(
+    current_user: TeacherOrAdminUser,
+    session: SessionDep,
+    target_date: Optional[date] = Query(None, description="Date to get lessons for (defaults to today)"),
+    class_id: Optional[uuid.UUID] = Query(None, description="Filter by class ID")
+):
+    """
+    Step 1-2 of Take Attendance: Get lessons for a specific date.
+    - Teachers see only their assigned lessons
+    - Admins see all lessons (can filter by class)
+    - Returns attendance status for each lesson (not_taken, partial, complete)
+    """
+    user, role = current_user
+    if target_date is None:
+        target_date = date.today()
+    
+    return getLessonsForDate(target_date, class_id, user.id, role, session)
+
+
+@router.get("/take/roster/{lesson_id}", response_model=LessonRosterResponse)
+def getLessonRosterForAttendance(
+    lesson_id: uuid.UUID,
+    current_user: TeacherOrAdminUser,
+    session: SessionDep,
+    target_date: Optional[date] = Query(None, description="Date for attendance (defaults to today)")
+):
+    """
+    Step 3 of Take Attendance: Get student roster for a lesson.
+    - Returns all students in the class with their current attendance status
+    - If attendance_exists is True, this is "Edit" mode
+    - Shows which students are already marked present/absent
+    """
+    user, role = current_user
+    if target_date is None:
+        target_date = date.today()
+    
+    return getLessonRoster(lesson_id, target_date, user.id, role, session)
+
+
+@router.get("/take/check/{lesson_id}")
+def checkLessonAttendanceStatus(
+    lesson_id: uuid.UUID,
+    current_user: TeacherOrAdminUser,
+    session: SessionDep,
+    target_date: Optional[date] = Query(None, description="Date to check (defaults to today)")
+):
+    """
+    Check if attendance exists for a lesson on a specific date.
+    Use this before showing the "Take Attendance" form to determine if it's
+    create mode or edit mode.
+    """
+    if target_date is None:
+        target_date = date.today()
+    
+    return checkAttendanceExists(lesson_id, target_date, session)
+
+
+@router.post("/take", response_model=AttendanceTakeResponse)
+def submitAttendance(
+    request: AttendanceTakeRequest,
+    current_user: TeacherOrAdminUser,
+    session: SessionDep
+):
+    """
+    Submit attendance for a lesson (create or update).
+    
+    Request body:
+    - lesson_id: UUID of the lesson
+    - attendance_date: Date for the attendance
+    - records: List of {student_id, present} objects
+    - overwrite_existing: Set to true to update existing records (edit mode)
+    
+    Validation:
+    - All students must belong to the lesson's class
+    - No duplicate student IDs allowed
+    - If overwrite_existing is false and records exist, returns 409 error
+    """
+    user, role = current_user
+    return takeAttendance(request, user.id, role, session)
 
 
 # ===================== Student/Parent View Endpoints =====================
