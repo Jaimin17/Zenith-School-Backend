@@ -10,6 +10,7 @@ import os
 
 from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
+from core.security import get_password_hash
 from models import Teacher, Lesson, Subject, Class
 from schemas import PaginatedTeacherResponse
 
@@ -194,6 +195,8 @@ async def teacherSaveWithImage(teacher_data: dict, img: Optional[UploadFile], se
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
 
+    hashed_password = get_password_hash(teacher_data["password"].strip())
+
     new_teacher = Teacher(
         username=username,
         first_name=teacher_data["first_name"].strip(),
@@ -206,7 +209,7 @@ async def teacherSaveWithImage(teacher_data: dict, img: Optional[UploadFile], se
         sex=teacher_data["sex"],
         dob=teacher_data["dob"],
         is_delete=False,
-        password="user@123"
+        password=hashed_password
     )
 
     new_teacher.subjects = subjects

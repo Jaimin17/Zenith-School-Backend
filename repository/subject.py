@@ -57,6 +57,18 @@ def getAllSubjectsIsDeleteFalse(session: Session, search: str = None, page: int 
     )
 
 
+def getListOfAllSubjectIsDeleteFalse(session: Session):
+    query = (
+        select(Subject)
+        .where(Subject.is_delete == False)
+    )
+
+    query = query.order_by(func.lower(Subject.name))
+
+    all_subject_list = session.exec(query).all()
+    return all_subject_list
+
+
 def findSubjectById(subjectId: uuid.UUID, session: Session):
     query = (
         select(Subject)

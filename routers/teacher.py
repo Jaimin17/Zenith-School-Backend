@@ -41,6 +41,7 @@ def getAllTeachers(current_user: TeacherOrAdminUser, session: SessionDep, search
         has_prev=has_prev
     )
 
+
 @router.get("/getFullList", response_model=List[TeacherBase])
 def getFullTeacherList(current_user: AllUser, session: SessionDep):
     all_teachers = getAllTeachersListIsDeleteFalse(session)
@@ -75,6 +76,7 @@ async def saveTeacher(
         sex: str = Form(...),
         dob: date = Form(...),  # Pydantic/FastAPI handles date conversion
         subjects: str = Form(...),
+        password: str = Form(...),
         img: Union[UploadFile, str, None] = File(None)
 ):
     try:
@@ -104,11 +106,23 @@ async def saveTeacher(
             detail="Invalid sex value. Must be 'male' or 'female'."
         )
 
-        # Validate phone format
+    if not settings.BLOOD_TYPE_RE.match(blood_type.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid blood type."
+        )
+
+    # Validate phone format
     if not settings.PHONE_RE.match(phone.strip()):
         raise HTTPException(
             status_code=400,
             detail="Invalid Indian phone number. Must be 10 digits starting with 6-9."
+        )
+
+    if not password.strip() or len(password.strip()) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Password is Required. And should be at least 6 characters long."
         )
 
     processed_img: Optional[UploadFile] = None
@@ -130,7 +144,8 @@ async def saveTeacher(
         "blood_type": blood_type,
         "sex": sex_enum,
         "dob": dob,
-        "subjects": subject_ids
+        "subjects": subject_ids,
+        "password": password,
     }
 
     result = await teacherSaveWithImage(teacher_data, processed_img, session)
@@ -194,8 +209,14 @@ async def updateTeacher(
             status_code=400,
             detail="Invalid sex value. Must be 'male' or 'female'."
         )
+    # Validate blood type
+    if not settings.BLOOD_TYPE_RE.match(blood_type.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid blood type."
+        )
 
-        # Validate phone format
+    # Validate phone format
     if not settings.PHONE_RE.match(phone.strip()):
         raise HTTPException(
             status_code=400,

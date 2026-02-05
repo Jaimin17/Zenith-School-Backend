@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     @property
     def PHONE_RE(self) -> re.Pattern:
         return re.compile(r'^[6-9]\d{9}$')
+    
+    @property
+    def BLOOD_TYPE_RE(self) -> re.Pattern:
+        return re.compile(r'^(A|B|AB|O)[+-]$', re.IGNORECASE)
 
     @property
     def EMAIL_RE(self) -> re.Pattern:
