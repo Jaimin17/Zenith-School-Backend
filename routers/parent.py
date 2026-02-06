@@ -4,7 +4,7 @@ from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AdminUser, TeacherOrAdminUser, AllUser
 from repository.parent import getAllParentIsDeleteFalse, countParent, parentSave, parentUpdate, parentSoftDelete, \
-    getParentById
+    getParentById, getFullListOfParentsIsDeleteFalse
 from schemas import ParentRead, SaveResponse, ParentSave, ParentUpdate, PaginatedParentResponse
 
 router = APIRouter(
@@ -20,6 +20,12 @@ def register(current_user: AdminUser, session: SessionDep):
 @router.get("/getAll", response_model=PaginatedParentResponse)
 def getAllParent(current_user: TeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
     all_parents = getAllParentIsDeleteFalse(session, search, page)
+    return all_parents
+
+
+@router.get("/getFullList", response_model=List[ParentRead])
+def getFullListOfParents(current_user: AdminUser, session: SessionDep):
+    all_parents = getFullListOfParentsIsDeleteFalse(session)
     return all_parents
 
 

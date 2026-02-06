@@ -63,6 +63,20 @@ def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 
     )
 
 
+def getFullListOfParentsIsDeleteFalse(session: Session):
+    query = (
+        select(Parent)
+        .where(
+            Parent.is_delete == False
+        )
+    )
+
+    query = query.order_by(func.lower(Parent.username))
+    active_parents = session.exec(query).all()
+
+    return active_parents
+
+
 def getParentById(parentId: uuid.UUID, session: Session):
     query = (
         select(Parent)

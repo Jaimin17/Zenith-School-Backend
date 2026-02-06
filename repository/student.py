@@ -8,6 +8,7 @@ from sqlalchemy import func, Select
 
 from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
+from core.security import get_password_hash
 from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance, UserSex
 from schemas import StudentSave, StudentUpdateBase, PaginatedStudentResponse
 
@@ -285,6 +286,8 @@ async def studentSaveWithImage(student_data: dict, img: Optional[UploadFile], se
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
 
+    hashed_password = get_password_hash(student_data["password"].strip())
+
     new_student = Student(
         username=username,
         first_name=student_data["first_name"].strip(),
@@ -297,7 +300,7 @@ async def studentSaveWithImage(student_data: dict, img: Optional[UploadFile], se
         sex=student_data["sex"],
         dob=student_data["dob"],
         is_delete=False,
-        password="user@123",  # or generate one, depending on your logic
+        password=hashed_password,  # or generate one, depending on your logic
         parent_id=student_data["parent_id"],
         class_id=student_data["class_id"],
         grade_id=student_data["grade_id"]

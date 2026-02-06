@@ -65,6 +65,7 @@ async def saveStudent(
         first_name: str = Form(...),
         last_name: str = Form(...),
         email: str = Form(...),
+        password: str = Form(...),
         phone: str = Form(...),
         address: str = Form(...),
         blood_type: str = Form(...),
@@ -125,6 +126,19 @@ async def saveStudent(
             detail="Invalid sex value. Must be 'male' or 'female'."
         )
 
+    if not password.strip() or len(password.strip()) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Password is Required. And should be at least 6 characters long."
+        )
+        
+    
+    if not settings.BLOOD_TYPE_RE.match(blood_type.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid blood type."
+        )
+
         # Validate phone format
     if not settings.PHONE_RE.match(phone.strip()):
         raise HTTPException(
@@ -183,7 +197,8 @@ async def saveStudent(
         "dob": dob,
         "parent_id": parent_uuid,
         "class_id": class_uuid,
-        "grade_id": grade_uuid
+        "grade_id": grade_uuid,
+        "password": password,
     }
 
     result = await studentSaveWithImage(student_data, processed_img, session)
@@ -265,6 +280,12 @@ async def updateStudent(
         raise HTTPException(
             status_code=400,
             detail="Invalid sex value. Must be 'male' or 'female'."
+        )
+        
+    if not settings.BLOOD_TYPE_RE.match(blood_type.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid blood type."
         )
 
         # Validate phone format
