@@ -1,5 +1,9 @@
 import uuid
 from typing import List
+
+from fastapi.params import Form
+
+from core.config import settings
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AdminUser, TeacherOrAdminUser, AllUser
@@ -43,104 +47,145 @@ def getById(current_user: AllUser, parentId: uuid.UUID, session: SessionDep):
 
 
 @router.post("/save", response_model=SaveResponse)
-def saveParent(parent: ParentSave, current_user: AdminUser, session: SessionDep):
-    if not parent.username or len(parent.username.strip()) < 3:
+def saveParent(
+        current_user: AdminUser,
+        session: SessionDep,
+        username: str = Form(...),
+        first_name: str = Form(...),
+        last_name: str = Form(...),
+        email: str = Form(...),
+        phone: str = Form(...),
+        address: str = Form(...),
+        password: str = Form(...)
+):
+    if not username or len(username.strip()) < 3:
         raise HTTPException(
             status_code=400,
             detail="Username is required and must be at least 3 characters long."
         )
 
-    if not parent.first_name or len(parent.first_name.strip()) < 1:
+    if not first_name or len(first_name.strip()) < 1:
         raise HTTPException(
             status_code=400,
             detail="First name is required."
         )
 
-    if not parent.last_name or len(parent.last_name.strip()) < 1:
+    if not last_name or len(last_name.strip()) < 1:
         raise HTTPException(
             status_code=400,
             detail="Last name is required."
         )
 
-    if not parent.email:
+    if not settings.EMAIL_RE.match(email.strip()):
         raise HTTPException(
             status_code=400,
-            detail="Email is required."
+            detail="Invalid email format."
         )
 
-    if not parent.phone or len(parent.phone.strip()) != 10:
+    if not phone or len(phone.strip()) != 10:
         raise HTTPException(
             status_code=400,
             detail="Phone number is required and must be exactly 10 digits."
         )
 
-    if not parent.phone.strip().isdigit():
+    if not password.strip() or len(password.strip()) < 6:
         raise HTTPException(
             status_code=400,
-            detail="Phone number must contain only digits."
+            detail="Password is Required. And should be at least 6 characters long."
         )
 
-    if not parent.address or len(parent.address.strip()) < 10:
+    if not settings.PHONE_RE.match(phone.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Indian phone number. Must be 10 digits starting with 6-9."
+        )
+
+    if not address or len(address.strip()) < 10:
         raise HTTPException(
             status_code=400,
             detail="Address is required and must be at least 10 characters long."
         )
 
-    result = parentSave(parent, session)
+    parent_data: ParentSave = ParentSave(
+        username=username.strip(),
+        first_name=first_name.strip(),
+        last_name=last_name.strip(),
+        email=email.strip(),
+        phone=phone.strip(),
+        address=address.strip(),
+        password=password.strip()
+    )
+
+    result = parentSave(parent_data, session)
     return result
 
 
 @router.put("/update", response_model=SaveResponse)
-def updateParent(current_user: AdminUser, parent: ParentUpdate, session: SessionDep):
-    if not parent.id:
+def updateParent(
+        current_user: AdminUser,
+        session: SessionDep,
+        id: str = Form(...),
+        username: str = Form(...),
+        first_name: str = Form(...),
+        last_name: str = Form(...),
+        email: str = Form(...),
+        phone: str = Form(...),
+        address: str = Form(...),
+):
+    if not id:
         raise HTTPException(
             status_code=400,
             detail="Parent ID is required for updating."
         )
 
-    if not parent.username or len(parent.username.strip()) < 3:
+    if not username or len(username.strip()) < 3:
         raise HTTPException(
             status_code=400,
             detail="Username is required and must be at least 3 characters long."
         )
 
-    if not parent.first_name or len(parent.first_name.strip()) < 1:
+    if not first_name or len(first_name.strip()) < 1:
         raise HTTPException(
             status_code=400,
             detail="First name is required."
         )
 
-    if not parent.last_name or len(parent.last_name.strip()) < 1:
+    if not last_name or len(last_name.strip()) < 1:
         raise HTTPException(
             status_code=400,
             detail="Last name is required."
         )
 
-    if not parent.email:
+    if not settings.EMAIL_RE.match(email.strip()):
         raise HTTPException(
             status_code=400,
-            detail="Email is required."
+            detail="Invalid email format."
         )
 
-    if not parent.phone or len(parent.phone.strip()) != 10:
+    if not settings.PHONE_RE.match(phone.strip()):
         raise HTTPException(
             status_code=400,
-            detail="Phone number is required and must be exactly 10 digits."
+            detail="Invalid Indian phone number. Must be 10 digits starting with 6-9."
         )
 
-    if not parent.phone.strip().isdigit():
-        raise HTTPException(
-            status_code=400,
-            detail="Phone number must contain only digits."
-        )
-
-    if not parent.address or len(parent.address.strip()) < 10:
+    if not address or len(address.strip()) < 10:
         raise HTTPException(
             status_code=400,
             detail="Address is required and must be at least 10 characters long."
         )
 
-    result = parentUpdate(parent, session)
+    parent_data: ParentUpdate = ParentUpdate(
+        id=uuid.UUID(id),
+        username=username.strip(),
+        first_name=first_name.strip(),
+        last_name=last_name.strip(),
+        email=email.strip(),
+        phone=phone.strip(),
+        address=address.strip(),
+        password=None
+    )
+
+    result = parentUpdate(parent_data, session)
     return result
 
 

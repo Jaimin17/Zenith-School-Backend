@@ -2,7 +2,7 @@ import uuid
 from token import STRING
 from typing import List
 from core.database import SessionDep
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Form
 from deps import CurrentUser, AdminUser, TeacherOrAdminUser
 from repository.subject import getAllSubjectsIsDeleteFalse, subjectSave, SubjectUpdate, SubjectSoftDelete_with_lesson, \
     findSubjectById, countSubjectForTeacher, getListOfAllSubjectIsDeleteFalse
@@ -42,29 +42,75 @@ def subjectCountForTeacher(current_user: TeacherOrAdminUser, teacherId: uuid.UUI
 
 
 @router.post("/save", response_model=SubjectSaveResponse)
-def saveSubject(current_user: AdminUser, subject: SubjectSave, session: SessionDep):
-    if subject.name is None or len(subject.name) <= 1:
+def saveSubject(
+        current_user: AdminUser,
+        session: SessionDep,
+        name: str = Form(...),
+        teachers: List[str] = Form(...),
+):
+    if name is None or len(name) <= 1:
         raise HTTPException(status_code=400, detail="Invalid subject name. Should be greater than 1 char.")
 
-    result = subjectSave(subject, session)
+    try:
+        teacher_ids = [
+            uuid.UUID(s.strip())
+            for s in teachers
+            if s.strip()
+        ]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid subject UUID format: {str(e)}"
+        )
+
+    subject_data: SubjectSave = SubjectSave(
+        name=name.strip(),
+        teachersList=teacher_ids,
+    )
+
+    result = subjectSave(subject_data, session)
     return result
 
 
 @router.put("/update", response_model=SubjectSaveResponse)
-def updateSubject(current_user: AdminUser, data: SubjectUpdateBase, session: SessionDep):
-    if not data.id:
+def updateSubject(
+        current_user: AdminUser,
+        session: SessionDep,
+        id: str = Form(...),
+        name: str = Form(...),
+        teachers: List[str] = Form(...),
+):
+    if not id:
         raise HTTPException(
             status_code=400,
             detail="Subject ID is required for updating."
         )
 
-    if not data.name or len(data.name.strip()) <= 1:
+    if not name or len(name.strip()) <= 1:
         raise HTTPException(
             status_code=400,
             detail="Subject name must be at least 2 characters long."
         )
 
-    result = SubjectUpdate(data, session)
+    try:
+        teacher_ids = [
+            uuid.UUID(s.strip())
+            for s in teachers
+            if s.strip()
+        ]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid subject UUID format: {str(e)}"
+        )
+
+    subject_data: SubjectUpdateBase = SubjectUpdateBase(
+        id=uuid.UUID(id),
+        name=name.strip(),
+        teachersList=teacher_ids,
+    )
+
+    result = SubjectUpdate(subject_data, session)
     return result
 
 

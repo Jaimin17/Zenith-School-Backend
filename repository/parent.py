@@ -7,6 +7,7 @@ from sqlalchemy import Select, func
 from sqlmodel import Session, select, or_
 
 from core.config import settings
+from core.security import get_password_hash
 from models import Parent, Student
 from schemas import ParentSave, ParentUpdate, PaginatedParentResponse
 
@@ -103,6 +104,7 @@ def parentSave(parent: ParentSave, session: Session):
     email = parent.email.strip().lower()
     phone = parent.phone.strip()
     address = parent.address.strip()
+    password = parent.password.strip()
 
     if len(username) < 3:
         raise HTTPException(
@@ -154,6 +156,8 @@ def parentSave(parent: ParentSave, session: Session):
             detail=detail
         )
 
+    hashed_password = get_password_hash(password)
+
     new_parent = Parent(
         username=username,
         first_name=first_name,
@@ -161,7 +165,7 @@ def parentSave(parent: ParentSave, session: Session):
         email=email,
         phone=phone,
         address=address,
-        password="user@123",
+        password=hashed_password,
         is_delete=False
     )
 

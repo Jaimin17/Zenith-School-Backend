@@ -314,12 +314,6 @@ class PaginatedSubjectResponse(PaginatedBaseResponse):
     data: List[SubjectRead]
 
 
-class SubjectUpdateBase(SQLModel):
-    id: uuid.UUID
-    name: str
-    teachersList: List[uuid.UUID]
-
-
 class StudentRead(StudentBase):
     parent: Optional[ParentBase] = None
     related_class: Optional[ClassBase] = None
@@ -361,6 +355,10 @@ class StudentDeleteResponse(SaveResponse):
 class SubjectSave(SQLModel):
     name: str
     teachersList: List[uuid.UUID]
+
+
+class SubjectUpdateBase(SubjectSave):
+    id: uuid.UUID
 
 
 class SubjectSaveResponse(SaveResponse):
@@ -509,6 +507,7 @@ class ParentSave(SQLModel):
     email: EmailStr
     phone: str
     address: str
+    password: str | None
 
 
 class ParentUpdate(ParentSave):
