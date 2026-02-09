@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, time
 from typing import List, Optional
 
 from fastapi import Form
@@ -132,8 +132,8 @@ class LessonBase(SQLModel):
     id: uuid.UUID
     name: str
     day: Day
-    start_time: datetime
-    end_time: datetime
+    start_time: time
+    end_time: time
     subject: Optional[SubjectBase] = None
     related_class: Optional[ClassBase] = None
 
@@ -245,7 +245,7 @@ class PaginatedClassResponse(PaginatedBaseResponse):
 class ClassSave(SQLModel):
     name: str
     capacity: int
-    supervisorId: Optional[uuid.UUID] = None
+    supervisorId: uuid.UUID
     gradeId: uuid.UUID
 
 
@@ -376,8 +376,8 @@ class PaginatedLessonResponse(PaginatedBaseResponse):
 class LessonSave(SQLModel):
     name: str
     day: Day
-    start_time: datetime
-    end_time: datetime
+    start_time: time
+    end_time: time
 
     subject_id: uuid.UUID
     class_id: uuid.UUID

@@ -42,7 +42,7 @@ def getAllTeachers(current_user: TeacherOrAdminUser, session: SessionDep, search
     )
 
 
-@router.get("/getFullList", response_model=List[TeacherBase])
+@router.get("/getFullList", response_model=List[TeacherRead])
 def getFullTeacherList(current_user: AllUser, session: SessionDep):
     all_teachers = getAllTeachersListIsDeleteFalse(session)
 

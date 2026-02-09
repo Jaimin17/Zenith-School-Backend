@@ -1,6 +1,9 @@
 import uuid
 from datetime import datetime, timezone
 from typing import List
+
+from fastapi.params import Form
+
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AllUser, TeacherOrAdminUser
@@ -50,32 +53,39 @@ def getAllExamsOfStudent(studentId: uuid.UUID, current_user: AllUser, session: S
 
 
 @router.post("/save", response_model=SaveResponse)
-def saveExam(exam: ExamSave, current_user: TeacherOrAdminUser, session: SessionDep):
+def saveExam(
+        current_user: TeacherOrAdminUser,
+        session: SessionDep,
+        title: str = Form(...),
+        start_time: datetime = Form(...),
+        end_time: datetime = Form(...),
+        lesson_id: str = Form(...)
+):
     user, role = current_user
 
-    if not exam.title or len(exam.title.strip()) < 2:
+    if not title or len(title.strip()) < 2:
         raise HTTPException(
             status_code=400,
             detail="Title is required and must be at least 2 characters long."
         )
 
-    exam_start = exam.start_time
+    exam_start = start_time
     if exam_start.tzinfo is None:
         exam_start = exam_start.replace(tzinfo=timezone.utc)
 
-    if not exam.start_time or not isinstance(exam.start_time, datetime):
+    if not start_time or not isinstance(start_time, datetime):
         raise HTTPException(
             status_code=400,
             detail="Start time is required."
         )
 
-    if not exam.end_time or not isinstance(exam.end_time, datetime):
+    if not end_time or not isinstance(end_time, datetime):
         raise HTTPException(
             status_code=400,
             detail="End time is required."
         )
 
-    if exam.start_time >= exam.end_time:
+    if start_time >= end_time:
         raise HTTPException(
             status_code=400,
             detail="Exam start time must be before end time."
@@ -87,49 +97,80 @@ def saveExam(exam: ExamSave, current_user: TeacherOrAdminUser, session: SessionD
             detail="Exam start time cannot be in the past."
         )
 
-    if not exam.lesson_id:
+    if not lesson_id:
         raise HTTPException(
             status_code=400,
             detail="Lesson id is required."
         )
+    else:
+        try:
+            lessionId: uuid.UUID = uuid.UUID(lesson_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Lesson id is not valid uuid."
+            )
 
-    result = examSave(exam, user.id, role, session)
+    exam_data: ExamSave = ExamSave(
+        title=title,
+        start_time=start_time,
+        end_time=end_time,
+        lesson_id=lessionId
+    )
+
+    result = examSave(exam_data, user.id, role, session)
     return result
 
 
 @router.put("/update", response_model=SaveResponse)
-def updateExam(current_user: TeacherOrAdminUser, exam: ExamUpdate, session: SessionDep):
+def updateExam(
+        current_user: TeacherOrAdminUser,
+        session: SessionDep,
+        id: str = Form(...),
+        title: str = Form(...),
+        start_time: datetime = Form(...),
+        end_time: datetime = Form(...),
+        lesson_id: str = Form(...)
+):
     user, role = current_user
 
-    exam_start = exam.start_time
+    exam_start = start_time
     if exam_start.tzinfo is None:
         exam_start = exam_start.replace(tzinfo=timezone.utc)
 
-    if not exam.id:
+    if not id:
         raise HTTPException(
             status_code=400,
             detail="Exam ID is required for updating."
         )
+    else:
+        try:
+            exam_id: uuid.UUID = uuid.UUID(id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Exam ID is not valid uuid."
+            )
 
-    if not exam.title or len(exam.title.strip()) < 2:
+    if not title or len(title.strip()) < 2:
         raise HTTPException(
             status_code=400,
             detail="Title is required and must be at least 2 characters long."
         )
 
-    if not exam.start_time or not isinstance(exam.start_time, datetime):
+    if not start_time or not isinstance(start_time, datetime):
         raise HTTPException(
             status_code=400,
             detail="Start time is required."
         )
 
-    if not exam.end_time or not isinstance(exam.end_time, datetime):
+    if not end_time or not isinstance(end_time, datetime):
         raise HTTPException(
             status_code=400,
             detail="End time is required."
         )
 
-    if exam.start_time >= exam.end_time:
+    if start_time >= end_time:
         raise HTTPException(
             status_code=400,
             detail="Exam start time must be before end time."
@@ -141,13 +182,29 @@ def updateExam(current_user: TeacherOrAdminUser, exam: ExamUpdate, session: Sess
             detail="Exam start time cannot be in the past."
         )
 
-    if not exam.lesson_id:
+    if not lesson_id:
         raise HTTPException(
             status_code=400,
             detail="Lesson id is required."
         )
+    else:
+        try:
+            lessionId: uuid.UUID = uuid.UUID(lesson_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Lesson id is not valid uuid."
+            )
 
-    result = examUpdate(exam, user.id, role, session)
+    exam_data: ExamUpdate = ExamUpdate(
+        id=exam_id,
+        title=title,
+        start_time=start_time,
+        end_time=end_time,
+        lesson_id=lessionId
+    )
+
+    result = examUpdate(exam_data, user.id, role, session)
     return result
 
 

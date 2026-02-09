@@ -1,5 +1,8 @@
 import uuid
 from typing import List
+
+from fastapi.params import Form
+
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentUser
@@ -59,56 +62,98 @@ def getClassById(classId: uuid.UUID, current_user: CurrentUser, session: Session
 
 
 @router.post("/save", response_model=SaveResponse)
-def saveClass(current_user: AdminUser, classes: ClassSave, session: SessionDep):
-    if not classes.name or len(classes.name.strip()) < 1:
+def saveClass(
+        current_user: AdminUser,
+        session: SessionDep,
+        name: str = Form(...),
+        capacity: int = Form(...),
+        supervisorId: uuid.UUID = Form(...),
+        gradeId: uuid.UUID = Form(...),
+):
+    if not name or len(name.strip()) < 1:
         raise HTTPException(
             status_code=400,
             detail="Class name is required and must contain at least 1 character."
         )
 
-    if classes.capacity is None or classes.capacity <= 0:
+    if capacity is None or capacity <= 0:
         raise HTTPException(
             status_code=400,
             detail="Capacity is required and must be greater than 0."
         )
 
-    if classes.gradeId is None:
+    if gradeId is None:
         raise HTTPException(
             status_code=400,
             detail="gradeId is required."
         )
 
-    result = classSave(classes, session)
+    if supervisorId is None:
+        raise HTTPException(
+            status_code=400,
+            detail="supervisorId is required."
+        )
+
+    class_data: ClassSave = ClassSave(
+        name=name.strip(),
+        capacity=capacity,
+        supervisorId=supervisorId,
+        gradeId=gradeId
+    )
+
+    result = classSave(class_data, session)
     return result
 
 
 @router.put("/update", response_model=SaveResponse)
-def updateClass(current_user: AdminUser, classes: ClassUpdateBase, session: SessionDep):
-    if not classes.id:
+def updateClass(
+        current_user: AdminUser,
+        session: SessionDep,
+        id: uuid.UUID = Form(...),
+        name: str = Form(...),
+        capacity: int = Form(...),
+        supervisorId: uuid.UUID = Form(...),
+        gradeId: uuid.UUID = Form(...),
+):
+    if not id:
         raise HTTPException(
             status_code=400,
             detail="Class ID is required for updating."
         )
 
-    if not classes.name or len(classes.name.strip()) < 1:
+    if not name or len(name.strip()) < 1:
         raise HTTPException(
             status_code=400,
             detail="Class name is required and must contain at least 1 character."
         )
 
-    if classes.capacity is None or classes.capacity <= 0:
+    if capacity is None or capacity <= 0:
         raise HTTPException(
             status_code=400,
             detail="Capacity is required and must be greater than 0."
         )
 
-    if classes.gradeId is None:
+    if gradeId is None:
         raise HTTPException(
             status_code=400,
             detail="gradeId is required."
         )
 
-    result = ClassUpdate(classes, session)
+    if supervisorId is None:
+        raise HTTPException(
+            status_code=400,
+            detail="supervisorId is required."
+        )
+
+    class_data: ClassUpdateBase = ClassUpdateBase(
+        id=id,
+        name=name,
+        capacity=capacity,
+        supervisorId=supervisorId,
+        gradeId=gradeId
+    )
+
+    result = ClassUpdate(class_data, session)
     return result
 
 

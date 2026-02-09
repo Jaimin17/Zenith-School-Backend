@@ -1,5 +1,8 @@
 import uuid
-from typing import List
+from typing import List, Optional
+
+from fastapi.params import Form
+
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AllUser, StudentOrTeacherOrAdminUser, AdminUser, ParentUser
@@ -10,11 +13,154 @@ from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIs
     getAllLessonOfCurrentWeekIsDeleteFalse, getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse, \
     getAllLessonOfClassOfCurrentWeekIsDeleteFalse, getAllLessonOfStudentOfCurrentWeekIsDeleteFalse
 from schemas import LessonRead, SaveResponse, LessonSave, LessonUpdate, LessonDeleteResponse, PaginatedLessonResponse
-from datetime import datetime, date, timedelta
+from datetime import datetime
 
 router = APIRouter(
     prefix="/lesson",
 )
+
+
+def validate_lesson_data(
+        name: str,
+        day: str,
+        start_time: str,
+        end_time: str,
+        subject_id: str,
+        class_id: str,
+        teacher_id: str,
+        lesson_id: Optional[str] = None
+) -> dict:
+    """
+    Validate and parse lesson form data.
+    Returns a dict with parsed values or raises HTTPException.
+    """
+    # Validate lesson ID (for updates)
+    if lesson_id:
+        try:
+            parsed_id = uuid.UUID(lesson_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Lesson ID is not a valid UUID."
+            )
+    else:
+        parsed_id = None
+
+    # Validate name
+    if not name or len(name.strip()) < 3:
+        raise HTTPException(
+            status_code=400,
+            detail="Lesson name is required and must be at least 3 characters long."
+        )
+
+    # Validate day
+    if not day or day.capitalize() not in Day:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid day. Must be one of: {', '.join(Day)}"
+        )
+    else:
+        selectedDay = Day[day.upper()]
+
+    # Validate and parse start time
+    if not start_time:
+        raise HTTPException(
+            status_code=400,
+            detail="Start time is required."
+        )
+
+    try:
+        # Try HH:MM format first
+        starting_time = datetime.strptime(start_time, "%H:%M").time()
+    except ValueError:
+        try:
+            # Try HH:MM:SS format
+            starting_time = datetime.strptime(start_time, "%H:%M:%S").time()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Start time must be in HH:MM or HH:MM:SS format."
+            )
+
+    # Validate and parse end time
+    if not end_time:
+        raise HTTPException(
+            status_code=400,
+            detail="End time is required."
+        )
+
+    try:
+        # Try HH:MM format first
+        ending_time = datetime.strptime(end_time, "%H:%M").time()
+    except ValueError:
+        try:
+            # Try HH:MM:SS format
+            ending_time = datetime.strptime(end_time, "%H:%M:%S").time()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="End time must be in HH:MM or HH:MM:SS format."
+            )
+
+    # Validate time order
+    if starting_time >= ending_time:
+        raise HTTPException(
+            status_code=400,
+            detail="Lesson start time must be before end time."
+        )
+
+    # Validate subject ID
+    if not subject_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Subject is required."
+        )
+    try:
+        subject_uuid = uuid.UUID(subject_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Subject ID is not a valid UUID."
+        )
+
+    # Validate class ID
+    if not class_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Class is required."
+        )
+    try:
+        class_uuid = uuid.UUID(class_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Class ID is not a valid UUID."
+        )
+
+    # Validate teacher ID
+    if not teacher_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Teacher is required."
+        )
+    try:
+        teacher_uuid = uuid.UUID(teacher_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Teacher ID is not a valid UUID."
+        )
+
+    return {
+        "id": parsed_id,
+        "name": name.strip(),
+        "day": selectedDay,
+        "start_time": starting_time,
+        "end_time": ending_time,
+        "subject_id": subject_uuid,
+        "class_id": class_uuid,
+        "teacher_id": teacher_uuid,
+    }
 
 
 @router.get("/getAll", response_model=PaginatedLessonResponse)
@@ -26,7 +172,6 @@ def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None,
         all_lessons = getAllLessonOfTeacherIsDeleteFalse(user.id, session, search, page)
     elif role == "student":
         all_lessons = getAllLessonOfClassIsDeleteFalse(user.class_id, session, search, page)
-        all_lessons = getAllLessonOfClassIsDeleteFalse(user.class_id, session, search, page)
     else:
         all_lessons = getAllLessonOfParentIsDeleteFalse(user.id, session, search, page)
     return all_lessons
@@ -36,23 +181,12 @@ def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None,
 def getAllOfCurrentWeek(current_user: StudentOrTeacherOrAdminUser, session: SessionDep):
     user, role = current_user
 
-    today: date = date.today()
-
-    days_since_monday: int = today.weekday()
-    days_until_friday: int = 4 - today.weekday()
-
-    monday: date = today - timedelta(days=days_since_monday)
-    friday: date = today + timedelta(days=days_until_friday)
-
-    week_start: datetime = datetime.combine(monday, datetime.min.time())
-    week_end: datetime = datetime.combine(friday, datetime.max.time())
-
     if role == "admin":
-        all_lessons = getAllLessonOfCurrentWeekIsDeleteFalse(session, week_start, week_end)
+        all_lessons = getAllLessonOfCurrentWeekIsDeleteFalse(session)
     elif role == "teacher":
-        all_lessons = getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse(user.id, session, week_start, week_end)
+        all_lessons = getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse(user.id, session)
     else:
-        all_lessons = getAllLessonOfClassOfCurrentWeekIsDeleteFalse(user.class_id, session, week_start, week_end)
+        all_lessons = getAllLessonOfClassOfCurrentWeekIsDeleteFalse(user.class_id, session)
 
     return all_lessons
 
@@ -61,18 +195,7 @@ def getAllOfCurrentWeek(current_user: StudentOrTeacherOrAdminUser, session: Sess
 def getLessonForStudent(studentId: uuid.UUID, current_user: AllUser, session: SessionDep):
     user, role = current_user
 
-    today: date = date.today()
-
-    days_since_monday: int = today.weekday()
-    days_until_friday: int = 4 - today.weekday()
-
-    monday: date = today - timedelta(days=days_since_monday)
-    friday: date = today + timedelta(days=days_until_friday)
-
-    week_start: datetime = datetime.combine(monday, datetime.min.time())
-    week_end: datetime = datetime.combine(friday, datetime.max.time())
-
-    all_lessons = getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId, user, role, session, week_start, week_end)
+    all_lessons = getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId, user, role, session)
 
     return all_lessons
 
@@ -186,116 +309,79 @@ def getAllLessonOfClass(classId: uuid.UUID, current_user: CurrentUser, session: 
 
 
 @router.post("/save", response_model=SaveResponse)
-def saveLesson(lesson: LessonSave, current_user: AdminUser, session: SessionDep):
-    if not lesson.name or len(lesson.name.strip()) < 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Lesson name is required and must be at least 3 characters long."
-        )
+def saveLesson(
+        current_user: AdminUser,
+        session: SessionDep,
+        name: str = Form(...),
+        day: str = Form(...),
+        start_time: str = Form(...),
+        end_time: str = Form(...),
+        subject_id: str = Form(...),
+        class_id: str = Form(...),
+        teacher_id: str = Form(...),
+):
+    validated_data = validate_lesson_data(
+        name=name,
+        day=day,
+        start_time=start_time,
+        end_time=end_time,
+        subject_id=subject_id,
+        class_id=class_id,
+        teacher_id=teacher_id,
+    )
 
-    if not lesson.day or not isinstance(lesson.day, Day):
-        raise HTTPException(
-            status_code=400,
-            detail="Day is required and must be a valid day of the week."
-        )
+    # Create lesson object
+    lesson_data = LessonSave(
+        name=validated_data["name"],
+        day=validated_data["day"],
+        start_time=validated_data["start_time"],
+        end_time=validated_data["end_time"],
+        subject_id=validated_data["subject_id"],
+        class_id=validated_data["class_id"],
+        teacher_id=validated_data["teacher_id"],
+    )
 
-    if not lesson.start_time:
-        raise HTTPException(
-            status_code=400,
-            detail="Start time is required."
-        )
-
-    if not lesson.end_time:
-        raise HTTPException(
-            status_code=400,
-            detail="End time is required."
-        )
-
-    if lesson.start_time >= lesson.end_time:
-        raise HTTPException(
-            status_code=400,
-            detail="Lesson start time must be before end time."
-        )
-
-    if not lesson.subject_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Subject is required."
-        )
-
-    if not lesson.class_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Class is required."
-        )
-
-    if not lesson.teacher_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Teacher is required."
-        )
-
-    result = lessonSave(lesson, session)
+    result = lessonSave(lesson_data, session)
     return result
 
 
 @router.put("/update", response_model=SaveResponse)
-def updateLesson(current_user: AdminUser, lesson: LessonUpdate, session: SessionDep):
-    if not lesson.id:
-        raise HTTPException(
-            status_code=400,
-            detail="Lesson ID is required for updating."
-        )
+def updateLesson(
+        current_user: AdminUser,
+        session: SessionDep,
+        id: str = Form(...),
+        name: str = Form(...),
+        day: str = Form(...),
+        start_time: str = Form(...),
+        end_time: str = Form(...),
+        subject_id: str = Form(...),
+        class_id: str = Form(...),
+        teacher_id: str = Form(...),
+):
+    validated_data = validate_lesson_data(
+        name=name,
+        day=day,
+        start_time=start_time,
+        end_time=end_time,
+        subject_id=subject_id,
+        class_id=class_id,
+        teacher_id=teacher_id,
+        lesson_id=id,
+    )
 
-    if not lesson.name or len(lesson.name.strip()) < 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Lesson name is required and must be at least 3 characters long."
-        )
+    # Create lesson object
+    lesson_data = LessonUpdate(
+        id=validated_data["id"],
+        name=validated_data["name"],
+        day=validated_data["day"],
+        start_time=validated_data["start_time"],
+        end_time=validated_data["end_time"],
+        subject_id=validated_data["subject_id"],
+        class_id=validated_data["class_id"],
+        teacher_id=validated_data["teacher_id"],
+    )
 
-    if not lesson.day or not isinstance(lesson.day, Day):
-        raise HTTPException(
-            status_code=400,
-            detail="Day is required and must be a valid day of the week."
-        )
-
-    if not lesson.start_time:
-        raise HTTPException(
-            status_code=400,
-            detail="Start time is required."
-        )
-
-    if not lesson.end_time:
-        raise HTTPException(
-            status_code=400,
-            detail="End time is required."
-        )
-
-    if lesson.start_time >= lesson.end_time:
-        raise HTTPException(
-            status_code=400,
-            detail="Lesson start time must be before end time."
-        )
-
-    if not lesson.subject_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Subject is required."
-        )
-
-    if not lesson.class_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Class is required."
-        )
-
-    if not lesson.teacher_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Teacher is required."
-        )
-
-    result = lessonUpdate(lesson, session)
+    result = lessonUpdate(lesson_data, session)
     return result
 
 

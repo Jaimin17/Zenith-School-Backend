@@ -271,13 +271,6 @@ def ClassUpdate(classes: ClassUpdateBase, session: Session):
             detail=f"No Grade found with the provided ID: {gradeId}"
         )
 
-    new_class = Class(
-        name=classes.name,
-        capacity=classes.capacity,
-        supervisor_id=supervisorId,
-        grade_id=gradeId,
-    )
-
     currentClass.name = classes.name
     currentClass.capacity = classes.capacity
     currentClass.supervisor_id = classes.supervisorId

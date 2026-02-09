@@ -20,7 +20,7 @@ def getAllSubject(current_user: AdminUser, session: SessionDep, search: str = No
     return all_subjects
 
 
-@router.get("/getFullList", response_model=List[SubjectBase])
+@router.get("/getFullList", response_model=List[SubjectRead])
 def getFullListOfSubject(current_user: TeacherOrAdminUser, session: SessionDep):
     all_subjects = getListOfAllSubjectIsDeleteFalse(session)
     return all_subjects
@@ -46,7 +46,7 @@ def saveSubject(
         current_user: AdminUser,
         session: SessionDep,
         name: str = Form(...),
-        teachers: List[str] = Form(...),
+        teachers: str = Form(...),
 ):
     if name is None or len(name) <= 1:
         raise HTTPException(status_code=400, detail="Invalid subject name. Should be greater than 1 char.")
@@ -54,7 +54,7 @@ def saveSubject(
     try:
         teacher_ids = [
             uuid.UUID(s.strip())
-            for s in teachers
+            for s in teachers.split(",")
             if s.strip()
         ]
     except ValueError as e:
@@ -78,7 +78,7 @@ def updateSubject(
         session: SessionDep,
         id: str = Form(...),
         name: str = Form(...),
-        teachers: List[str] = Form(...),
+        teachers: str = Form(...),
 ):
     if not id:
         raise HTTPException(
@@ -95,7 +95,7 @@ def updateSubject(
     try:
         teacher_ids = [
             uuid.UUID(s.strip())
-            for s in teachers
+            for s in teachers.split(",")
             if s.strip()
         ]
     except ValueError as e:

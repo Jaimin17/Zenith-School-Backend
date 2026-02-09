@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, time
 from enum import Enum
 import uuid
 from typing import Optional, List, TYPE_CHECKING
@@ -197,8 +197,8 @@ class Lesson(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     name: str = Field(nullable=False)
     day: Day = Field(nullable=False)
-    start_time: datetime = Field(nullable=False)
-    end_time: datetime = Field(nullable=False)
+    start_time: time = Field(nullable=False)
+    end_time: time = Field(nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
 
     subject_id: Optional[uuid.UUID] = Field(default=None, foreign_key="subject.id")

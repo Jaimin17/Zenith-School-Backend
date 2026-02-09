@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 from typing import Optional
 
 from fastapi import HTTPException
@@ -49,6 +49,11 @@ def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
         select(Lesson)
         .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
         .join(Class, onclause=(Lesson.class_id == Class.id))
+        .options(
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.related_class),
+            selectinload(Lesson.subject)
+        )
         .where(Lesson.is_delete == False)
     )
 
@@ -68,18 +73,16 @@ def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
     )
 
 
-def getAllLessonOfCurrentWeekIsDeleteFalse(session: Session, week_start: datetime, week_end: datetime):
+def getAllLessonOfCurrentWeekIsDeleteFalse(session: Session):
     query = (
         select(Lesson)
         .options(
             selectinload(Lesson.teacher),
-            selectinload(Lesson.related_class)
+            selectinload(Lesson.related_class),
+            selectinload(Lesson.subject)
         )
-        .where(
-            Lesson.is_delete == False,
-            Lesson.start_time >= week_start,
-            Lesson.end_time <= week_end,
-        )
+        .where(Lesson.is_delete == False)
+        .order_by(Lesson.day, Lesson.start_time)
     )
 
     all_lessons = session.exec(query).all()
@@ -91,7 +94,8 @@ def getLessonById(lessonId: uuid.UUID, session: Session):
         select(Lesson)
         .options(
             selectinload(Lesson.related_class).selectinload(Class.students),
-            selectinload(Lesson.teacher)
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.subject)
         )
         .where(
             Lesson.id == lessonId,
@@ -110,6 +114,11 @@ def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, s
     if (not withPagination):
         query = (
             select(Lesson)
+            .options(
+                selectinload(Lesson.teacher),
+                selectinload(Lesson.related_class),
+                selectinload(Lesson.subject)
+            )
             .where(
                 Lesson.teacher_id == teacherId,
                 Lesson.is_delete == False
@@ -123,6 +132,8 @@ def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, s
     else:
         count_query = (
             select(func.count(Lesson.id.distinct()))
+            .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
+            .join(Class, onclause=(Lesson.class_id == Class.id))
             .where(
                 Lesson.teacher_id == teacherId,
                 Lesson.is_delete == False
@@ -134,6 +145,13 @@ def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, s
 
         query = (
             select(Lesson)
+            .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
+            .join(Class, onclause=(Lesson.class_id == Class.id))
+            .options(
+                selectinload(Lesson.teacher),
+                selectinload(Lesson.related_class),
+                selectinload(Lesson.subject)
+            )
             .where(
                 Lesson.teacher_id == teacherId,
                 Lesson.is_delete == False
@@ -155,20 +173,19 @@ def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, s
         )
 
 
-def getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse(teacherId: uuid.UUID, session: Session, week_start: datetime,
-                                                    week_end: datetime):
+def getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse(teacherId: uuid.UUID, session: Session):
     query = (
         select(Lesson)
         .options(
             selectinload(Lesson.teacher),
-            selectinload(Lesson.related_class)
+            selectinload(Lesson.related_class),
+            selectinload(Lesson.subject)
         )
         .where(
             Lesson.is_delete == False,
             Lesson.teacher_id == teacherId,
-            Lesson.start_time >= week_start,
-            Lesson.end_time <= week_end,
         )
+        .order_by(Lesson.day, Lesson.start_time)
     )
 
     all_lessons = session.exec(query).all()
@@ -204,6 +221,8 @@ def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, searc
 
     count_query = (
         select(func.count(Lesson.id.distinct()))
+        .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
+        .join(Class, onclause=(Lesson.class_id == Class.id))
         .where(
             Lesson.class_id == classId,
             Lesson.is_delete == False
@@ -215,6 +234,13 @@ def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, searc
 
     query = (
         select(Lesson)
+        .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
+        .join(Class, onclause=(Lesson.class_id == Class.id))
+        .options(
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.related_class),
+            selectinload(Lesson.subject)
+        )
         .where(
             Lesson.class_id == classId,
             Lesson.is_delete == False
@@ -237,29 +263,26 @@ def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, searc
     )
 
 
-def getAllLessonOfClassOfCurrentWeekIsDeleteFalse(classId: uuid.UUID, session: Session, week_start: datetime,
-                                                  week_end: datetime):
+def getAllLessonOfClassOfCurrentWeekIsDeleteFalse(classId: uuid.UUID, session: Session):
     query = (
         select(Lesson)
         .options(
             selectinload(Lesson.teacher),
-            selectinload(Lesson.related_class)
+            selectinload(Lesson.related_class),
+            selectinload(Lesson.subject)
         )
         .where(
             Lesson.is_delete == False,
             Lesson.class_id == classId,
-            Lesson.start_time >= week_start,
-            Lesson.end_time <= week_end,
         )
-        .order_by(Lesson.start_time)
+        .order_by(Lesson.day, Lesson.start_time)
     )
 
     all_lessons = session.exec(query).all()
     return all_lessons
 
 
-def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user, role: str, session: Session,
-                                                    week_start: datetime, week_end: datetime):
+def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user, role: str, session: Session):
     query = (
         select(Lesson)
         .join(Class, Lesson.class_id == Class.id)
@@ -278,8 +301,6 @@ def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user, 
                     Student.parent_id == user.id,
                     Student.is_delete == False,
                     Lesson.is_delete == False,
-                    Lesson.start_time >= week_start,
-                    Lesson.end_time <= week_end
                 )
             )
     else:
@@ -288,14 +309,10 @@ def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user, 
                 Student.id == studentId,
                 Student.is_delete == False,
                 Lesson.is_delete == False,
-                Lesson.start_time >= week_start,
-                Lesson.end_time <= week_end
             )
         )
 
-
-    query = query.order_by(Lesson.start_time)
-
+    query = query.order_by(Lesson.day, Lesson.start_time)
 
     lessons = session.exec(query).all()
 
@@ -333,6 +350,7 @@ def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, sea
 
     count_query = (
         select(func.count(Lesson.id.distinct()))
+        .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
         .join(Class, onclause=(Class.id == Lesson.class_id))
         .join(Student, onclause=(Student.class_id == Class.id))
         .where(
@@ -346,8 +364,14 @@ def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, sea
 
     query = (
         select(Lesson)
+        .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
         .join(Class, onclause=(Class.id == Lesson.class_id))
         .join(Student, onclause=(Student.class_id == Class.id))
+        .options(
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.related_class),
+            selectinload(Lesson.subject)
+        )
         .where(
             Student.parent_id == parentId,
             Lesson.is_delete == False
@@ -431,7 +455,7 @@ def lessonSave(lesson: LessonSave, session: Session):
     duplicate_name_query = (
         select(Lesson)
         .where(
-            Lesson.name.ilike(f"%{name}%"),
+            func.lower(Lesson.name) == name.lower(),
             Lesson.class_id == lesson.class_id,
             Lesson.is_delete == False
         )
@@ -441,7 +465,7 @@ def lessonSave(lesson: LessonSave, session: Session):
     if duplicate_name:
         raise HTTPException(
             status_code=400,
-            detail=f"A lesson with similar name already exists for this class."
+            detail=f"A lesson with this name already exists for this class."
         )
 
     time_conflict_query = (
@@ -618,7 +642,7 @@ def lessonUpdate(lesson: LessonUpdate, session: Session):
     duplicate_name_query = (
         select(Lesson)
         .where(
-            Lesson.name.ilike(f"%{name}%"),
+            func.lower(Lesson.name) == name.lower(),
             Lesson.class_id == lesson.class_id,
             Lesson.is_delete == False,
             Lesson.id != lesson.id
@@ -629,7 +653,7 @@ def lessonUpdate(lesson: LessonUpdate, session: Session):
     if duplicate_name:
         raise HTTPException(
             status_code=400,
-            detail=f"A lesson with similar name already exists for this class."
+            detail=f"A lesson with this name already exists for this class."
         )
 
     time_conflict_query = (
