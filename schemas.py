@@ -202,6 +202,7 @@ class ExamBase(SQLModel):
 class AssignmentBase(SQLModel):
     id: uuid.UUID
     title: str
+    description: str
     start_date: date
     due_date: date
     pdf_name: str
@@ -466,6 +467,7 @@ class PaginatedAssignmentResponse(PaginatedBaseResponse):
 
 class AssignmentSave(SQLModel):
     title: str
+    description: str
     start_date: date
     end_date: date
     lesson_id: uuid.UUID

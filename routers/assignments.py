@@ -185,6 +185,7 @@ async def saveAssignments(
         current_user: TeacherOrAdminUser,
         session: SessionDep,
         title: str = Form(...),
+        description: str = Form(...),
         start_date: date = Form(...),
         end_date: date = Form(...),
         lesson_id: str = Form(...),
@@ -196,6 +197,12 @@ async def saveAssignments(
         raise HTTPException(
             status_code=400,
             detail="Title is required and must be at least 2 characters long."
+        )
+
+    if not description or len(description.strip()) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Description is required and must be at least 10 characters long."
         )
 
     if not start_date or not isinstance(start_date, date):
@@ -236,7 +243,6 @@ async def saveAssignments(
             detail=f"Invalid Lesson UUID format: {str(e)}"
         )
 
-    processed_pdf: Optional[UploadFile] = None
     if pdf is None or isinstance(pdf, str):
         raise HTTPException(
             status_code=400,
@@ -253,6 +259,7 @@ async def saveAssignments(
 
     assignment = AssignmentSave(
         title=title.strip(),
+        description=description.strip(),
         start_date=start_date,
         end_date=end_date,
         lesson_id=lesson_uuid
@@ -268,6 +275,7 @@ async def updateAssignment(
         session: SessionDep,
         id: str = Form(...),
         title: str = Form(...),
+        description: str = Form(...),
         start_date: date = Form(...),
         end_date: date = Form(...),
         lesson_id: str = Form(...),
@@ -295,10 +303,24 @@ async def updateAssignment(
             detail="Assignment ID is required for updating."
         )
 
+    # Fetch existing assignment to compare dates
+    existing_assignment: Optional[AssignmentRead] = getAssignmentById(session, assignmentId)
+    if not existing_assignment:
+        raise HTTPException(
+            status_code=404,
+            detail="Assignment not found with provided ID."
+        )
+
     if not title or len(title.strip()) < 2:
         raise HTTPException(
             status_code=400,
             detail="Title is required and must be at least 2 characters long."
+        )
+
+    if not description or len(description.strip()) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Description is required and must be at least 10 characters long."
         )
 
     if not start_date or not isinstance(start_date, date):
@@ -319,7 +341,11 @@ async def updateAssignment(
             detail="Assignment start date must be before end date."
         )
 
-    if start_date < date.today():
+    # Check if dates have changed from the existing assignment
+    dates_changed = (start_date != existing_assignment.start_date or end_date != existing_assignment.due_date)
+
+    # Only validate date constraints if dates were modified
+    if dates_changed and start_date < date.today():
         raise HTTPException(
             status_code=400,
             detail="Assignment start date cannot be in the past."
@@ -349,6 +375,7 @@ async def updateAssignment(
     assignment = AssignmentUpdate(
         id=assignmentId,
         title=title.strip(),
+        description=description.strip(),
         start_date=start_date,
         end_date=end_date,
         lesson_id=lesson_uuid

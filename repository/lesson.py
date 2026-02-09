@@ -296,13 +296,13 @@ def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user, 
 
     if role == "parent":
         query = query.where(
-                and_(
-                    Student.id == studentId,
-                    Student.parent_id == user.id,
-                    Student.is_delete == False,
-                    Lesson.is_delete == False,
-                )
+            and_(
+                Student.id == studentId,
+                Student.parent_id == user.id,
+                Student.is_delete == False,
+                Lesson.is_delete == False,
             )
+        )
     else:
         query = query.where(
             and_(
@@ -392,6 +392,15 @@ def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, sea
         has_next=page < total_pages,
         has_prev=page > 1
     )
+
+
+def getAllLessonList(session: Session):
+    query = (
+        select(Lesson)
+        .where(Lesson.is_delete == False)
+    )
+
+    return session.exec(query).all()
 
 
 def lessonSave(lesson: LessonSave, session: Session):

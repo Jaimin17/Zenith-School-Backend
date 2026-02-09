@@ -18,7 +18,8 @@ def addSearchOption(query: Select, search: str):
     if search:
         search_pattern = f"%{search.lower()}%"
         query = query.where(
-            (func.lower(Assignment.title).like(search_pattern))
+            (func.lower(Assignment.title).like(search_pattern)),
+            (func.lower(Assignment.description).like(search_pattern)),
         )
 
     return query
@@ -506,6 +507,7 @@ async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: UploadFile, use
 
     new_assignment = Assignment(
         title=assignment.title.strip(),
+        description=assignment.description.strip(),
         start_date=assignment.start_date,
         due_date=assignment.end_date,
         lesson_id=assignment.lesson_id,
@@ -587,6 +589,7 @@ async def assignmentUpdate(assignment: AssignmentUpdate, pdf: Optional[UploadFil
         )
 
     current_assignment.title = assignment.title.strip()
+    current_assignment.description = assignment.description.strip()
 
     new_lesson = None
     if assignment.lesson_id is not None and assignment.lesson_id != current_assignment.lesson_id:

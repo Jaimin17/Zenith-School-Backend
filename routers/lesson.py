@@ -11,7 +11,8 @@ from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIs
     getAllLessonOfClassIsDeleteFalse, getAllLessonOfParentIsDeleteFalse, countAllLessonOfTeacher, \
     countAllLessonOfStudent, lessonSave, lessonUpdate, lessonSoftDelete, getLessonById, \
     getAllLessonOfCurrentWeekIsDeleteFalse, getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse, \
-    getAllLessonOfClassOfCurrentWeekIsDeleteFalse, getAllLessonOfStudentOfCurrentWeekIsDeleteFalse
+    getAllLessonOfClassOfCurrentWeekIsDeleteFalse, getAllLessonOfStudentOfCurrentWeekIsDeleteFalse, \
+    getAllLessonList
 from schemas import LessonRead, SaveResponse, LessonSave, LessonUpdate, LessonDeleteResponse, PaginatedLessonResponse
 from datetime import datetime
 
@@ -174,6 +175,12 @@ def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None,
         all_lessons = getAllLessonOfClassIsDeleteFalse(user.class_id, session, search, page)
     else:
         all_lessons = getAllLessonOfParentIsDeleteFalse(user.id, session, search, page)
+    return all_lessons
+
+@router.get("/getFullList", response_model=List[LessonRead])
+def getFullListLesson(current_user: AllUser, session: SessionDep):
+    user, role = current_user
+    all_lessons = getAllLessonList(session)
     return all_lessons
 
 

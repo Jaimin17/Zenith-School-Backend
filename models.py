@@ -232,6 +232,7 @@ class Exam(SQLModel, table=True):
 class Assignment(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     title: str = Field(nullable=False)
+    description: str = Field(nullable=False)
     start_date: date = Field(nullable=False)
     due_date: date = Field(nullable=False)
     pdf_name: str = Field(nullable=False)
