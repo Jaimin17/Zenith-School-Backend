@@ -345,6 +345,20 @@ def getAllAssignmentsOfClassIsDeleteFalse(
     )
 
 
+def getFullListOfAssignmentOfClassIsDeleteFalse(classId: uuid.UUID, session: Session):
+    query = (
+        select(Assignment)
+        .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
+        .where(
+            Lesson.class_id == classId,
+            Assignment.is_delete == False,
+        )
+    )
+
+    all_assignments = session.exec(query).unique().all()
+    return all_assignments
+
+
 def getAllAssignmentsOfStudentIsDeleteFalse(
         studentId: uuid.UUID,
         session: Session,

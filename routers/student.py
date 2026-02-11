@@ -12,7 +12,7 @@ from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, S
     PaginatedStudentResponse
 from repository.student import getAllStudentsIsDeleteFalse, getAllStudentsOfTeacherAndIsDeleteFalse, countStudent, \
     countStudentBySexAll, getStudentByIdAndIsDeleteFalse, StudentUpdate, studentSoftDelete, \
-    studentSaveWithImage, getAllStudentsOfParentAndIsDeleteFalse
+    studentSaveWithImage, getAllStudentsOfParentAndIsDeleteFalse, getAllStudentsOfClassAndIsDeleteFalse
 
 router = APIRouter(
     prefix="/student",
@@ -54,6 +54,12 @@ def getAllStudents(current_user: ParentOrTeacherOrAdminUser, session: SessionDep
 def getStudentByTeacherId(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                           page: int = 1):
     all_students = getAllStudentsOfTeacherAndIsDeleteFalse(session, teacherId, search, page)
+    return all_students
+
+
+@router.get("/getStudentsOfClass/{classId}", response_model=List[StudentRead])
+def getStudentsOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep):
+    all_students = getAllStudentsOfClassAndIsDeleteFalse(classId, session)
     return all_students
 
 
@@ -131,8 +137,7 @@ async def saveStudent(
             status_code=400,
             detail="Password is Required. And should be at least 6 characters long."
         )
-        
-    
+
     if not settings.BLOOD_TYPE_RE.match(blood_type.strip()):
         raise HTTPException(
             status_code=400,
@@ -281,7 +286,7 @@ async def updateStudent(
             status_code=400,
             detail="Invalid sex value. Must be 'male' or 'female'."
         )
-        
+
     if not settings.BLOOD_TYPE_RE.match(blood_type.strip()):
         raise HTTPException(
             status_code=400,

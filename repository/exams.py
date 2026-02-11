@@ -138,6 +138,20 @@ def getAllExamsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search
     )
 
 
+def getFullListOfExamsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session):
+    query = (
+        select(Exam)
+        .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
+        .where(
+            Exam.is_delete == False,
+            Lesson.class_id == classId,
+        )
+    )
+
+    all_exams = session.exec(query).unique().all()
+    return all_exams
+
+
 def getAllExamsOfStudentIsDeleteFalse(studentId: uuid.UUID, session: Session, search: str, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 

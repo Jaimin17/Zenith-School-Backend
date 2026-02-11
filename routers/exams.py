@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AllUser, TeacherOrAdminUser
 from repository.exams import getAllExamsIsDeleteFalse, getAllExamsOfTeacherIsDeleteFalse, \
     getAllExamsOfClassIsDeleteFalse, getAllExamsOfParentIsDeleteFalse, examSave, examUpdate, examSoftDelete, \
-    getAllExamsOfStudentIsDeleteFalse
+    getAllExamsOfStudentIsDeleteFalse, getFullListOfExamsOfClassIsDeleteFalse
 from schemas import ExamRead, SaveResponse, ExamSave, ExamUpdate, ExamDeleteResponse, PaginatedExamResponse
 
 router = APIRouter(
@@ -42,6 +42,12 @@ def getAllExamsOfTeacher(teacherId: uuid.UUID, current_user: CurrentUser, sessio
 def getAllExamsOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                        page: int = 1):
     all_exams = getAllExamsOfClassIsDeleteFalse(classId, session, search, page)
+    return all_exams
+
+
+@router.get("/allOfClass/{classId}", response_model=List[ExamRead])
+def getFullListOfExamsOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep):
+    all_exams = getFullListOfExamsOfClassIsDeleteFalse(classId, session)
     return all_exams
 
 

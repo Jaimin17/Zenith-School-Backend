@@ -207,6 +207,21 @@ def getAllStudentsOfParentAndIsDeleteFalse(session: Session, parentId: uuid.UUID
     )
 
 
+async def getAllStudentsOfClassAndIsDeleteFalse(classId: uuid.UUID, session: Session):
+    query = (
+        select(Student)
+        .where(
+            Student.is_delete == False,
+            Student.class_id == classId,
+        )
+    )
+
+    query = query.order_by(Student.username)
+
+    results = session.exec(query).all()
+    return results
+
+
 async def studentSaveWithImage(student_data: dict, img: Optional[UploadFile], session: Session):
     username = student_data["username"].strip()
     email = student_data["email"].strip().lower()

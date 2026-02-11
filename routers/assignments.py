@@ -8,7 +8,8 @@ from models import Assignment
 from repository.assignments import getAllAssignmentsIsDeleteFalse, getAllAssignmentsOfTeacherIsDeleteFalse, \
     getAllAssignmentsOfClassIsDeleteFalse, getAllAssignmentsOfParentIsDeleteFalse, assignmentSaveWithPdf, \
     assignmentUpdate, \
-    assignmentSoftDelete, getAssignmentById, getAllAssignmentsOfStudentIsDeleteFalse
+    assignmentSoftDelete, getAssignmentById, getAllAssignmentsOfStudentIsDeleteFalse, \
+    getFullListOfAssignmentOfClassIsDeleteFalse
 from schemas import AssignmentRead, SaveResponse, AssignmentSave, AssignmentUpdate, AssignmentDeleteResponse, \
     PaginatedAssignmentResponse
 
@@ -160,6 +161,12 @@ def getAllAssignmentOfClass(
 ):
     all_exams = getAllAssignmentsOfClassIsDeleteFalse(classId, session, search, page, subject_id, teacher_id, status,
                                                       due_date)
+    return all_exams
+
+
+@router.get("/allOfClass/{classId}", response_model=List[AssignmentRead])
+def getFullListOfAssignmentOfClass(classId: uuid.UUID, current_user: AllUser, session: SessionDep):
+    all_exams = getFullListOfAssignmentOfClassIsDeleteFalse(classId, session)
     return all_exams
 
 
