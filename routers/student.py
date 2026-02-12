@@ -51,15 +51,15 @@ def getAllStudents(current_user: ParentOrTeacherOrAdminUser, session: SessionDep
 
 
 @router.get("/byTeacher/{teacherId}", response_model=PaginatedStudentResponse)
-def getStudentByTeacherId(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
+async def getStudentByTeacherId(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
                           page: int = 1):
-    all_students = getAllStudentsOfTeacherAndIsDeleteFalse(session, teacherId, search, page)
+    all_students = await getAllStudentsOfTeacherAndIsDeleteFalse(session, teacherId, search, page)
     return all_students
 
 
 @router.get("/getStudentsOfClass/{classId}", response_model=List[StudentRead])
-def getStudentsOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep):
-    all_students = getAllStudentsOfClassAndIsDeleteFalse(classId, session)
+async def getStudentsOfClass(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep):
+    all_students = await getAllStudentsOfClassAndIsDeleteFalse(classId, session)
     return all_students
 
 

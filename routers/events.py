@@ -1,6 +1,9 @@
 import uuid
 from datetime import datetime, date, timezone
 from typing import List, Optional
+
+from fastapi.params import Form
+
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AllUser, AdminUser
@@ -117,40 +120,48 @@ def getAllByDate(current_user: AllUser, session: SessionDep, selectDate: str | N
 
 
 @router.post("/save", response_model=SaveResponse)
-def saveEvents(event: EventSave, current_user: AdminUser, session: SessionDep):
+def saveEvents(
+        current_user: AdminUser,
+        session: SessionDep,
+        title: str = Form(...),
+        description: str = Form(...),
+        start_time: datetime = Form(...),
+        end_time: datetime = Form(...),
+        class_id: Optional[str] = Form(None)
+):
     user, role = current_user
 
-    if not event.title or len(event.title.strip()) < 3:
+    if not title or len(title.strip()) < 3:
         raise HTTPException(
             status_code=400,
             detail="Title should be at least 3 characters long."
         )
 
-    if not event.description or len(event.description.strip()) < 10:
+    if not description or len(description.strip()) < 10:
         raise HTTPException(
             status_code=400,
             detail="Description should be at least 10 characters long."
         )
 
-    if not event.start_time:
+    if not start_time:
         raise HTTPException(
             status_code=400,
             detail="Start time is required."
         )
 
-    if not event.end_time:
+    if not end_time:
         raise HTTPException(
             status_code=400,
             detail="End time is required."
         )
 
-    if event.start_time >= event.end_time:
+    if start_time >= end_time:
         raise HTTPException(
             status_code=400,
             detail="Event start time must be before end time."
         )
 
-    event_start = event.start_time
+    event_start = start_time
     if event_start.tzinfo is None:
         event_start = event_start.replace(tzinfo=timezone.utc)
 
@@ -160,51 +171,86 @@ def saveEvents(event: EventSave, current_user: AdminUser, session: SessionDep):
             detail="Event start time cannot be in the past."
         )
 
-    result = eventSave(event, session)
+    classId = None
+    if class_id:
+        try:
+            classId = uuid.UUID(class_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="class Id is not a valid type."
+            )
+
+    event_data: EventSave = EventSave(
+        title=title.strip(),
+        description=description.strip(),
+        start_time=event_start,
+        end_time=end_time,
+        class_id=classId
+    )
+
+    result = eventSave(event_data, session)
     return result
 
 
 @router.put("/update", response_model=SaveResponse)
-def updateEvent(current_user: AdminUser, event: EventUpdate, session: SessionDep):
+def updateEvent(
+        current_user: AdminUser,
+        session: SessionDep,
+        id: str = Form(...),
+        title: str = Form(...),
+        description: str = Form(...),
+        start_time: datetime = Form(...),
+        end_time: datetime = Form(...),
+        class_id: Optional[str] = Form(None)
+):
     user, role = current_user
 
-    if not event.id:
+    if not id:
         raise HTTPException(
             status_code=400,
             detail="Event ID is required for updating."
         )
+    else:
+        try:
+            ID = uuid.UUID(id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Event ID is not a valid type."
+            )
 
-    if not event.title or len(event.title.strip()) < 3:
+    if not title or len(title.strip()) < 3:
         raise HTTPException(
             status_code=400,
             detail="Title should be at least 3 characters long."
         )
 
-    if not event.description or len(event.description.strip()) < 10:
+    if not description or len(description.strip()) < 10:
         raise HTTPException(
             status_code=400,
             detail="Description should be at least 10 characters long."
         )
 
-    if not event.start_time:
+    if not start_time:
         raise HTTPException(
             status_code=400,
             detail="Start time is required."
         )
 
-    if not event.end_time:
+    if not end_time:
         raise HTTPException(
             status_code=400,
             detail="End time is required."
         )
 
-    if event.start_time >= event.end_time:
+    if start_time >= end_time:
         raise HTTPException(
             status_code=400,
             detail="Event start time must be before end time."
         )
 
-    event_start = event.start_time
+    event_start = start_time
     if event_start.tzinfo is None:
         event_start = event_start.replace(tzinfo=timezone.utc)
 
@@ -214,7 +260,26 @@ def updateEvent(current_user: AdminUser, event: EventUpdate, session: SessionDep
             detail="Event start time cannot be in the past."
         )
 
-    result = eventUpdate(event, session)
+    classId = None
+    if class_id:
+        try:
+            classId = uuid.UUID(class_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="class Id is not a valid type."
+            )
+
+    event_data: EventUpdate = EventUpdate(
+        id=ID,
+        title=title.strip(),
+        description=description.strip(),
+        start_time=event_start,
+        end_time=end_time,
+        class_id=classId
+    )
+
+    result = eventUpdate(event_data, session)
     return result
 
 

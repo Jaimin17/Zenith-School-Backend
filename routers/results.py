@@ -78,8 +78,8 @@ def saveResult(
         current_user: TeacherOrAdminUser,
         session: SessionDep,
         score: float = Form(...),
-        exam_id: Optional[str] = Form(...),
-        assignment_id: Optional[str] = Form(...),
+        exam_id: Optional[str] = Form(None),
+        assignment_id: Optional[str] = Form(None),
         student_id: str = Form(...),
 ):
     user, role = current_user
@@ -154,8 +154,8 @@ def updateResult(
         session: SessionDep,
         id: str = Form(...),
         score: float = Form(...),
-        exam_id: Optional[str] = Form(...),
-        assignment_id: Optional[str] = Form(...),
+        exam_id: Optional[str] = Form(None),
+        assignment_id: Optional[str] = Form(None),
         student_id: str = Form(...),
 ):
     user, role = current_user
