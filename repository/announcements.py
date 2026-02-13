@@ -395,6 +395,12 @@ async def announcementUpdate(announcement: AnnouncementUpdate, pdf: Optional[Upl
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
 
+    if current_announcement.announcement_date != announcement_date and announcement_date < date.today():
+        raise HTTPException(
+            status_code=400,
+            detail="Announcement date cannot be in the past."
+        )
+
     current_announcement.title = title
     current_announcement.description = description
     current_announcement.announcement_date = announcement_date

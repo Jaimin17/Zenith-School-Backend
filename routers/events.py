@@ -254,12 +254,6 @@ def updateEvent(
     if event_start.tzinfo is None:
         event_start = event_start.replace(tzinfo=timezone.utc)
 
-    if event_start < datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=400,
-            detail="Event start time cannot be in the past."
-        )
-
     classId = None
     if class_id:
         try:

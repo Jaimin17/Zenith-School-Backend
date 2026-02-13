@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, time
+from datetime import date, time, timezone
 from typing import Optional
 
 from fastapi import HTTPException
@@ -442,6 +442,20 @@ def eventUpdate(event: EventUpdate, session: Session):
         current_event.class_id = event.class_id
     else:
         current_event.class_id = None
+
+    print("current_event: ", current_event)
+    print("Updated event: ", event)
+
+    current_start_aware = current_event.start_time.replace(
+        tzinfo=timezone.utc) if current_event.start_time.tzinfo is None else current_event.start_time
+    event_start_aware = event.start_time.replace(
+        tzinfo=timezone.utc) if event.start_time.tzinfo is None else event.start_time
+
+    if current_start_aware != event_start_aware and event_start_aware < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=400,
+            detail="Event start time cannot be in the past."
+        )
 
     current_event.start_time = event.start_time
     current_event.end_time = event.end_time

@@ -34,6 +34,7 @@ def getTeacherAnnouncements(current_user: TeacherOrAdminUser, teacherId: uuid.UU
     announcements = getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, None, page)
     return announcements
 
+
 @router.get("/student/{studentId}", response_model=PaginatedAnnouncementResponse)
 def getStudentAnnouncements(current_user: TeacherOrAdminUser, studentId: uuid.UUID, session: SessionDep, page: int = 1):
     announcements = getAllAnnouncementsByStudentAndIsDeleteFalse(studentId, session, None, page)
@@ -219,13 +220,7 @@ async def updateAnnouncement(
             detail="Description is required and should be at least 10 characters long."
         )
 
-    if announcement_date < date.today():
-        raise HTTPException(
-            status_code=400,
-            detail="Announcement date cannot be in the past."
-        )
-
-    if role == "Admin":
+    if role == "admin":
         class_uuid: Optional[uuid.UUID] = None
         if class_id and class_id.strip():
             try:
