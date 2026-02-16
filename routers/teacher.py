@@ -5,13 +5,14 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
 
 from core.config import settings
-from deps import CurrentUser, TeacherOrAdminUser, AdminUser, AllUser
+from deps import CurrentUser, TeacherOrAdminUser, AdminUser, AllUser, UserRole
 from core.database import SessionDep
 from models import UserSex
 from repository.teacher import getAllTeachersIsDeleteFalse, getAllTeachersOfClassAndIsDeleteFalse, countTeacher, \
     findTeacherById, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject, teacherSaveWithImage, \
-    getTotalTeachersCount, getAllTeachersListIsDeleteFalse
-from schemas import TeacherRead, SaveResponse, TeacherDeleteResponse, PaginatedTeacherResponse, TeacherBase
+    getTotalTeachersCount, getAllTeachersListIsDeleteFalse, updateTeacherPassword
+from schemas import TeacherRead, SaveResponse, TeacherDeleteResponse, PaginatedTeacherResponse, TeacherBase, \
+    updatePasswordModel
 
 router = APIRouter(
     prefix="/teacher",
@@ -152,6 +153,49 @@ async def saveTeacher(
     return result
 
 
+@router.put("/updatePassword/{teacher_id}", response_model=str)
+def updatePassword(
+        current_user: TeacherOrAdminUser,
+        session: SessionDep,
+        teacher_id: str,
+        updated_password: str = Form(...),
+):
+    user, role = current_user
+
+    if not teacher_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Teacher Id is not present."
+        )
+    else:
+        try:
+            teacherId = uuid.UUID(teacher_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Teacher Id is not a valid type."
+            )
+
+    if role == UserRole.TEACHER and user.id != teacher_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Not enough permissions to update the password."
+        )
+
+    if not updated_password or len(updated_password.strip()) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="New password is not present or is less then 8 char."
+        )
+
+    data: updatePasswordModel = updatePasswordModel(
+        id=teacherId,
+        updated_password=updated_password.strip(),
+    )
+
+    return updateTeacherPassword(data, session)
+
+
 @router.put("/update", response_model=SaveResponse)
 async def updateTeacher(
         current_user: AdminUser,
@@ -252,11 +296,5 @@ async def updateTeacher(
 
 @router.delete("/delete", response_model=TeacherDeleteResponse)
 def softDeleteTeacher(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
-    if id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Teacher ID is required for deleting."
-        )
-
     result = teacherSoftDeleteWithLessonAndClassAndSubject(id, session)
     return result

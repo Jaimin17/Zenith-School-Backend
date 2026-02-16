@@ -10,7 +10,7 @@ from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
 from core.security import get_password_hash
 from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance, UserSex
-from schemas import StudentSave, StudentUpdateBase, PaginatedStudentResponse
+from schemas import StudentSave, StudentUpdateBase, PaginatedStudentResponse, updatePasswordModel
 
 
 def addSearchOption(query: Select, search: str):
@@ -343,6 +343,37 @@ async def studentSaveWithImage(student_data: dict, img: Optional[UploadFile], se
         "id": str(new_student.id),
         "message": "Student created successfully"
     }
+
+
+def updateStudentPassword(data: updatePasswordModel, session: Session):
+    query = (
+        select(Student)
+        .where(
+            Student.is_delete == False,
+            Student.id == data.id
+        )
+    )
+
+    current_user: Optional[Student] = session.exec(query).first()
+
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    updatedHashPassword = get_password_hash(data.password)
+
+    current_user.password = updatedHashPassword
+    session.add(current_user)
+
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while updating password."
+        )
+
+    return "Password updated successfully"
 
 
 async def StudentUpdate(student_data: dict, img: Optional[UploadFile], session: Session):

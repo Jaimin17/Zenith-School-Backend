@@ -49,6 +49,11 @@ class RegisterUser(SQLModel):
     password: str
 
 
+class updatePasswordModel(SQLModel):
+    id: uuid.UUID
+    updatedPassword: str
+
+
 class AdminResponse(SQLModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -738,8 +743,8 @@ class LessonForDateItem(SQLModel):
     subject_name: Optional[str] = None
     teacher_id: Optional[uuid.UUID] = None
     teacher_name: Optional[str] = None
-    start_time: datetime
-    end_time: datetime
+    start_time: time
+    end_time: time
     day: str
     attendance_status: str  # "not_taken", "partial", "complete"
     students_count: int

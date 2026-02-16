@@ -5,14 +5,16 @@ from typing import List, Union, Optional
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 
 from core.config import settings
-from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser, ParentOrTeacherOrAdminUser
+from deps import CurrentUser, StudentOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser, ParentOrTeacherOrAdminUser, \
+    UserRole
 from core.database import SessionDep
 from models import UserSex
 from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, StudentDeleteResponse, \
-    PaginatedStudentResponse
+    PaginatedStudentResponse, updatePasswordModel
 from repository.student import getAllStudentsIsDeleteFalse, getAllStudentsOfTeacherAndIsDeleteFalse, countStudent, \
     countStudentBySexAll, getStudentByIdAndIsDeleteFalse, StudentUpdate, studentSoftDelete, \
-    studentSaveWithImage, getAllStudentsOfParentAndIsDeleteFalse, getAllStudentsOfClassAndIsDeleteFalse
+    studentSaveWithImage, getAllStudentsOfParentAndIsDeleteFalse, getAllStudentsOfClassAndIsDeleteFalse, \
+    updateStudentPassword
 
 router = APIRouter(
     prefix="/student",
@@ -51,8 +53,9 @@ def getAllStudents(current_user: ParentOrTeacherOrAdminUser, session: SessionDep
 
 
 @router.get("/byTeacher/{teacherId}", response_model=PaginatedStudentResponse)
-async def getStudentByTeacherId(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
-                          page: int = 1):
+async def getStudentByTeacherId(teacherId: uuid.UUID, current_user: CurrentUser, session: SessionDep,
+                                search: str = None,
+                                page: int = 1):
     all_students = await getAllStudentsOfTeacherAndIsDeleteFalse(session, teacherId, search, page)
     return all_students
 
@@ -208,6 +211,49 @@ async def saveStudent(
 
     result = await studentSaveWithImage(student_data, processed_img, session)
     return result
+
+
+@router.put("/updatePassword/{student_id}", response_model=str)
+def updatePassword(
+        current_user: StudentOrAdminUser,
+        session: SessionDep,
+        student_id: str,
+        updated_password: str = Form(...),
+):
+    user, role = current_user
+
+    if not student_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Student Id is not present."
+        )
+    else:
+        try:
+            studentId = uuid.UUID(student_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Student Id is not a valid type."
+            )
+
+    if role == UserRole.STUDENT and user.id != student_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Not enough permissions to update the password."
+        )
+
+    if not updated_password or len(updated_password.strip()) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="New password is not present or is less then 8 char."
+        )
+
+    data: updatePasswordModel = updatePasswordModel(
+        id=studentId,
+        updated_password=updated_password.strip(),
+    )
+
+    return updateStudentPassword(data, session)
 
 
 @router.put("/update", response_model=SaveResponse)

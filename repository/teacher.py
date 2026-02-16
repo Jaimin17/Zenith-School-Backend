@@ -12,7 +12,7 @@ from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
 from core.security import get_password_hash
 from models import Teacher, Lesson, Subject, Class
-from schemas import PaginatedTeacherResponse
+from schemas import PaginatedTeacherResponse, updatePasswordModel
 
 
 def addSearchOption(query: Select, search: str):
@@ -237,6 +237,37 @@ async def teacherSaveWithImage(teacher_data: dict, img: Optional[UploadFile], se
         "id": str(new_teacher.id),
         "message": "Teacher created successfully"
     }
+
+
+def updateTeacherPassword(data: updatePasswordModel, session: Session):
+    query = (
+        select(Teacher)
+        .where(
+            Teacher.is_delete == False,
+            Teacher.id == data.id
+        )
+    )
+
+    current_user: Optional[Teacher] = session.exec(query).first()
+
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    updatedHashPassword = get_password_hash(data.password)
+
+    current_user.password = updatedHashPassword
+    session.add(current_user)
+
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while updating password."
+        )
+
+    return "Password updated successfully"
 
 
 async def TeacherUpdate(teacher_data: dict, img: Optional[UploadFile], session: Session):

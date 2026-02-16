@@ -9,7 +9,7 @@ from sqlmodel import Session, select, or_
 from core.config import settings
 from core.security import get_password_hash
 from models import Parent, Student
-from schemas import ParentSave, ParentUpdate, PaginatedParentResponse
+from schemas import ParentSave, ParentUpdate, PaginatedParentResponse, updatePasswordModel
 
 
 def addSearchOption(query: Select, search: str):
@@ -289,6 +289,37 @@ def parentUpdate(parent: ParentUpdate, session: Session):
         "id": str(current_parent.id),
         "message": "Parent updated successfully"
     }
+
+
+def updateParentPassword(data: updatePasswordModel, session: Session):
+    query = (
+        select(Parent)
+        .where(
+            Parent.is_delete == False,
+            Parent.id == data.id
+        )
+    )
+
+    current_user: Optional[Parent] = session.exec(query).first()
+
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    updatedHashPassword = get_password_hash(data.password)
+
+    current_user.password = updatedHashPassword
+    session.add(current_user)
+
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while updating password."
+        )
+
+    return "Password updated successfully"
 
 
 def parentSoftDelete(id: uuid.UUID, session: Session):

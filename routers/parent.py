@@ -6,10 +6,10 @@ from fastapi.params import Form
 from core.config import settings
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
-from deps import CurrentUser, AdminUser, TeacherOrAdminUser, AllUser
+from deps import CurrentUser, AdminUser, TeacherOrAdminUser, AllUser, ParentOrAdminUser, UserRole
 from repository.parent import getAllParentIsDeleteFalse, countParent, parentSave, parentUpdate, parentSoftDelete, \
-    getParentById, getFullListOfParentsIsDeleteFalse
-from schemas import ParentRead, SaveResponse, ParentSave, ParentUpdate, PaginatedParentResponse
+    getParentById, getFullListOfParentsIsDeleteFalse, updateParentPassword
+from schemas import ParentRead, SaveResponse, ParentSave, ParentUpdate, PaginatedParentResponse, updatePasswordModel
 
 router = APIRouter(
     prefix="/parent",
@@ -187,6 +187,49 @@ def updateParent(
 
     result = parentUpdate(parent_data, session)
     return result
+
+
+@router.put("/updatePassword/{parent_id}", response_model=str)
+def updatePassword(
+        current_user: ParentOrAdminUser,
+        session: SessionDep,
+        parent_id: str,
+        updated_password: str = Form(...),
+):
+    user, role = current_user
+
+    if not parent_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Parent Id is not present."
+        )
+    else:
+        try:
+            parentId = uuid.UUID(parent_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Parent Id is not a valid type."
+            )
+
+    if role == UserRole.PARENT and user.id != parent_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Not enough permissions to update the password."
+        )
+
+    if not updated_password or len(updated_password.strip()) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="New password is not present or is less then 8 char."
+        )
+
+    data: updatePasswordModel = updatePasswordModel(
+        id=parentId,
+        updated_password=updated_password.strip(),
+    )
+
+    return updateParentPassword(data, session)
 
 
 @router.delete("/delete", response_model=SaveResponse)
