@@ -116,11 +116,5 @@ def updateSubject(
 
 @router.delete("/delete", response_model=SubjectSaveResponse)
 def softDeleteSubject(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
-    if id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Subject ID is required for deleting."
-        )
-
     result = SubjectSoftDelete_with_lesson(id, session)
     return result

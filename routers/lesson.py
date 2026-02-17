@@ -394,11 +394,5 @@ def updateLesson(
 
 @router.delete("/delete", response_model=LessonDeleteResponse)
 def softDeleteLesson(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
-    if id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Lesson ID is required for deleting."
-        )
-
     result = lessonSoftDelete(id, session)
     return result

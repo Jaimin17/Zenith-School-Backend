@@ -407,11 +407,5 @@ async def updateStudent(
 
 @router.delete("/delete", response_model=StudentDeleteResponse)
 def softDeleteStudent(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
-    if id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Student ID is required for deleting."
-        )
-
     result = studentSoftDelete(id, session)
     return result

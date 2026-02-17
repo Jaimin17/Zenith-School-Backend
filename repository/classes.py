@@ -302,18 +302,24 @@ def ClassSoftDeleteWithLessonsStudentsEventsAnnoucements(id: uuid.UUID, session:
     if current_class is None:
         raise HTTPException(status_code=404, detail="No class found with the provided ID.")
 
+    # Check if any active students are linked to this class
+    students = [s for s in current_class.students if not s.is_delete]
+    if students:
+        return {
+            "id": str(current_class.id),
+            "message": "Class cannot be deleted while students are enrolled. Please reassign or remove students first.",
+            "lessons_affected": 0,
+            "students_affected": len(students),
+            "events_affected": 0,
+            "announcements_affected": 0
+        }
+
     current_class.supervisor_id = None
 
     lessons = current_class.lessons  # using relationship directly
 
     for lesson in lessons:
         lesson.is_delete = True
-
-    students = current_class.students
-
-    for student in students:
-        student.class_id = None  # unlink class
-        student.is_delete = True  # soft delete student
 
     events = current_class.events
 
@@ -339,7 +345,7 @@ def ClassSoftDeleteWithLessonsStudentsEventsAnnoucements(id: uuid.UUID, session:
         "id": str(current_class.id),
         "message": "Class deleted successfully",
         "lessons_affected": len(lessons),
-        "students_affected": len(students),
+        "students_affected": 0,
         "events_affected": len(events),
         "announcements_affected": len(announcements)
     }
