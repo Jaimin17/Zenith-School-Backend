@@ -394,11 +394,5 @@ async def updateAssignment(
 
 @router.delete("/delete", response_model=AssignmentDeleteResponse)
 def softDeleteAssignment(current_user: TeacherOrAdminUser, id: uuid.UUID, session: SessionDep):
-    if id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Assignment ID is required for deleting."
-        )
-
     result = assignmentSoftDelete(id, session)
     return result

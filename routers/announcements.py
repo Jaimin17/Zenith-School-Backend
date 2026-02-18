@@ -264,11 +264,5 @@ async def updateAnnouncement(
 
 @router.delete("/delete", response_model=SaveResponse)
 def softDeleteAnnouncement(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
-    if id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Announcement ID is required for deleting."
-        )
-
     result = AnnouncementSoftDelete(id, session)
     return result

@@ -216,11 +216,5 @@ def updateExam(
 
 @router.delete("/delete", response_model=ExamDeleteResponse)
 def softDeleteExam(current_user: TeacherOrAdminUser, id: uuid.UUID, session: SessionDep):
-    if id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Exam ID is required for deleting."
-        )
-
     result = examSoftDelete(id, session)
     return result

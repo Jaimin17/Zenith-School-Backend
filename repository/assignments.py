@@ -738,9 +738,20 @@ def assignmentSoftDelete(id: uuid.UUID, session: Session):
             detail="Assignment not found with provided id."
         )
 
+    # Check if exam is in the future
+    from datetime import date
+    now = date.today()
+    exam_start = current_assignment.start_date
+
+    if exam_start < now:
+        raise HTTPException(
+            status_code=400,
+            detail="Only future assignments can be deleted. This assignment has already started or passed."
+        )
+
     result_query = (
         select(Result)
-        .where(Result.exam_id == id, Result.is_delete == False)
+        .where(Result.assignment_id == id, Result.is_delete == False)
     )
     results: List[Result] = session.exec(result_query).all()
 

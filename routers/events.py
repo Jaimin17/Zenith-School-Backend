@@ -279,13 +279,5 @@ def updateEvent(
 
 @router.delete("/delete", response_model=SaveResponse)
 def softDeleteEvent(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
-    user, role = current_user
-
-    if id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Event ID is required for deleting."
-        )
-
     result = EventSoftDelete(id, session)
     return result

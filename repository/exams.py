@@ -518,6 +518,19 @@ def examSoftDelete(id: uuid.UUID, session: Session):
             detail="Exam not found with provided id."
         )
 
+    # Check if exam is in the future
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    exam_start = current_exam.start_time
+    if exam_start.tzinfo is None:
+        exam_start = exam_start.replace(tzinfo=timezone.utc)
+
+    if exam_start <= now:
+        raise HTTPException(
+            status_code=400,
+            detail="Only future exams can be deleted. This exam has already started or passed."
+        )
+
     result_query = (
         select(Result)
         .where(Result.exam_id == id, Result.is_delete == False)

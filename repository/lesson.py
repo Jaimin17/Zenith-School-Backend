@@ -762,6 +762,22 @@ def lessonSoftDelete(id: uuid.UUID, session: Session):
             detail="Lesson not found with provided ID."
         )
 
+    # Check if there are any future exams linked to this lesson
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
+    findFutureExams = (
+        select(Exam)
+        .where(Exam.lesson_id == id, Exam.is_delete == False, Exam.start_time > now)
+    )
+    futureExams = session.exec(findFutureExams).all()
+
+    if futureExams:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete lesson with {len(futureExams)} upcoming exam(s). Please delete or reschedule the exams first."
+        )
+
     findRelatedExams = (
         select(Exam)
         .where(Exam.lesson_id == id, Exam.is_delete == False)

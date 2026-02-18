@@ -243,11 +243,5 @@ def updateResult(
 def softDeleteResult(current_user: TeacherOrAdminUser, id: uuid.UUID, session: SessionDep):
     user, role = current_user
 
-    if id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Result ID is required for deleting."
-        )
-
     result = ResultSoftDelete(id, user.id, role, session)
     return result

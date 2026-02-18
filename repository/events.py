@@ -496,6 +496,19 @@ def EventSoftDelete(id: uuid.UUID, session: Session):
             detail="Event not found or already deleted."
         )
 
+    # Check if exam is in the future
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    event_start = current_event.start_time
+    if event_start.tzinfo is None:
+        event_start = event_start.replace(tzinfo=timezone.utc)
+
+    if event_start < now:
+        raise HTTPException(
+            status_code=400,
+            detail="Only future events can be deleted. This event has already started or passed."
+        )
+
     current_event.class_id = None
     current_event.is_delete = True
 
