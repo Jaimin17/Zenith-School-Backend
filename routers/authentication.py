@@ -3,10 +3,12 @@ from enum import Enum
 from math import dist
 from typing import Any, Union
 
+from fastapi.params import Form
 from jwt import PyJWTError
 from core.config import settings
+from core.security import get_password_hash
 from deps import CurrentUser, UserRole, AdminUser, TeacherOrAdminUser, AllUser, TokenDep
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 from core.database import SessionDep
@@ -14,6 +16,7 @@ from core.security import verify_password, create_access_token, create_refresh_t
 from models import User, Admin, Teacher, Parent, Student, BlacklistToken
 from schemas import Token, UserPublic, RefreshTokenRequest, TokenWithUser, AdminResponse, ParentResponse, \
     TeacherResponse, StudentResponse
+from core.FileStorage import process_and_save_image
 
 router = APIRouter(
     prefix="/auth"
@@ -160,6 +163,135 @@ def getUserDetail(current_user: AllUser, session: SessionDep):
 
     user_response = format_user_response(db_user, role)
     return user_response
+
+
+@router.post("/changePassword", response_model=str)
+def changeUserPassword(
+        current_user: AllUser,
+        session: SessionDep,
+        old_password: str = Form(...),
+        new_password: str = Form(...),
+        confirm_password: str = Form(...)
+):
+    db_user, role = current_user
+
+    # 1. Check current password
+    if not verify_password(old_password, db_user.password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    # 2. Check new password and confirmation match
+    if new_password != confirm_password:
+        raise HTTPException(status_code=400, detail="New passwords do not match")
+
+    # 3. Optionally, check new password is different from current
+    if verify_password(new_password, db_user.password):
+        raise HTTPException(status_code=400, detail="New password must be different from current password")
+
+    # 4. Update password for the user based on role
+    db_user.password = get_password_hash(new_password)
+    session.add(db_user)
+    session.commit()
+
+    return "Password changed successfully."
+
+
+@router.put("/updateProfile", response_model=dict)
+def update_profile(
+        current_user: AllUser,
+        session: SessionDep,
+        first_name: str = Form(...),
+        last_name: str = Form(...),
+        email: str = Form(...),
+        phone: str = Form(...),
+        address: str = Form(...)
+):
+    db_user, role = current_user
+
+    # Validate email
+    if not settings.EMAIL_RE.match(email.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid email format."
+        )
+
+    # Validate phone
+    if not settings.PHONE_RE.match(phone.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Indian phone number. Must be 10 digits starting with 6-9."
+    )
+
+    if first_name and len(first_name.strip()) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="First name should be at least 2 characters long."
+        )
+    
+    if last_name and len(last_name.strip()) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Last name should be at least 2 characters long."
+        )
+    
+    if address and len(address.strip()) < 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Address should be at least 5 characters long."
+        )
+
+    # Update basic info
+    db_user.first_name = first_name
+    db_user.last_name = last_name
+    db_user.email = email
+    db_user.phone = phone
+    db_user.address = address
+
+    session.add(db_user)
+    session.commit()
+
+    return {"message": "Profile updated successfully", "user": format_user_response(db_user, role)}
+
+
+
+@router.post("/updateProfilePicture", response_model=str)
+async def update_profile_picture(
+        current_user: AllUser,
+        session: SessionDep,
+        file: UploadFile = Form(...)
+):
+    db_user, role = current_user
+
+    # Validate file type (e.g., only allow JPEG and PNG)
+    if file.content_type not in ["image/jpeg", "image/png"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Only JPEG and PNG are allowed."
+        )
+
+    image_filename = None
+
+    if role == UserRole.STUDENT and file.filename:
+        try:
+            image_filename = await process_and_save_image(file, "students", db_user.username)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+
+    if role == UserRole.TEACHER and file.filename:
+        try:
+            image_filename = await process_and_save_image(file, "teachers", db_user.username)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+
+    # Update user's profile picture URL
+    db_user.img = image_filename
+    session.add(db_user)
+    session.commit()
+
+    return "Profile picture updated successfully."
 
 # @router.post("/test-token", response_model=UserPublic)
 # def test_token(current_user: CurrentUser) -> Any:
