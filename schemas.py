@@ -17,6 +17,10 @@ class PaginatedBaseResponse(BaseModel):
     has_prev: bool
 
 
+class ChatRequest(BaseModel):
+    query: str
+
+
 class UserBase(BaseModel):
     username: str
     first_name: str

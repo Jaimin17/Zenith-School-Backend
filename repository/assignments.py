@@ -508,6 +508,19 @@ async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: UploadFile, use
     pdf_filename = None
     try:
         pdf_filename = await process_and_save_pdf(pdf, "assignments", assignment.title)
+
+        from chatbot.doc_ingester import ingest_pdf
+
+        ingest_pdf(
+            settings.UPLOAD_DIR_PDF / "assignments" / pdf_filename,
+            metadata={
+                "type": "assignment",
+                "filename": pdf_filename,
+            }
+        )
+
+        print(f"Document '{pdf_filename}' uploaded and indexed successfully.")
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -693,9 +706,21 @@ async def assignmentUpdate(assignment: AssignmentUpdate, pdf: Optional[UploadFil
             current_assignment.pdf_name = pdf_filename
 
             # Clean up old PDF after successful upload
-            if old_pdf_filename:
-                old_pdf_path = settings.UPLOAD_DIR_PDF / "assignments" / old_pdf_filename
-                cleanup_pdf(old_pdf_path)
+            # if old_pdf_filename:
+            #     old_pdf_path = settings.UPLOAD_DIR_PDF / "assignments" / old_pdf_filename
+            #     cleanup_pdf(old_pdf_path)
+
+            from chatbot.doc_ingester import ingest_pdf
+
+            ingest_pdf(
+                settings.UPLOAD_DIR_PDF / "assignments" / pdf_filename,
+                metadata={
+                    "type": "assignment",
+                    "filename": pdf_filename,
+                }
+            )
+
+            print(f"Document '{pdf_filename}' uploaded and indexed successfully.")
 
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))

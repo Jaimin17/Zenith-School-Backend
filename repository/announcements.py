@@ -265,6 +265,19 @@ async def announcementSave(announcement: AnnouncementSave, pdf: Optional[UploadF
     if pdf and pdf.filename:
         try:
             pdf_filename = await process_and_save_pdf(pdf, "announcements", title)
+
+            from chatbot.doc_ingester import ingest_pdf
+
+            ingest_pdf(
+                settings.UPLOAD_DIR_PDF / "announcements" / pdf_filename,
+                metadata={
+                    "type": "announcement",
+                    "filename": pdf_filename,
+                }
+            )
+
+            print(f"Document '{pdf_filename}' uploaded and indexed successfully.")
+
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
@@ -386,9 +399,22 @@ async def announcementUpdate(announcement: AnnouncementUpdate, pdf: Optional[Upl
             current_announcement.attachment = pdf_filename
 
             # Clean up old PDF after successful upload
-            if old_pdf_filename:
-                old_pdf_path = settings.UPLOAD_DIR_PDF / "announcements" / old_pdf_filename
-                cleanup_pdf(old_pdf_path)
+            # if old_pdf_filename:
+            #     old_pdf_path = settings.UPLOAD_DIR_PDF / "announcements" / old_pdf_filename
+            #     cleanup_pdf(old_pdf_path)
+
+            from chatbot.doc_ingester import ingest_pdf
+
+            ingest_pdf(
+                settings.UPLOAD_DIR_PDF / "announcements" / pdf_filename,
+                metadata={
+                    "type": "announcement",
+                    "filename": pdf_filename,
+                }
+            )
+
+            print(f"Document '{pdf_filename}' uploaded and indexed successfully.")
+
 
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))

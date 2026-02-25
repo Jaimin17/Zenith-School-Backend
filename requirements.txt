@@ -13,3 +13,10 @@ apscheduler
 alembic
 pillow
 multipart
+langchain
+langchain-community
+langchain-ollama
+chromadb
+pypdf
+langchain-chroma
+sentence-transformers
