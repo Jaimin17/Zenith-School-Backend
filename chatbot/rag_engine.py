@@ -10,11 +10,12 @@ import uuid, json
 from typing import AsyncGenerator
 
 # Separate LLM instance for streaming (formatter step only)
-streaming_llm = OllamaLLM(model="llama3", temperature=0.3, streaming=True)
+streaming_llm = OllamaLLM(model="llama3.2", temperature=0.3, streaming=True)
 
 
-async def run_agent_stream(session: Session, query: str, role: str, user_id: uuid.UUID, extra: dict = {}) -> \
-AsyncGenerator[str, None]:
+async def run_agent_stream(session: Session, query: str, role: str, user_id: uuid.UUID, extra: dict = {},
+                           chat_history: list[dict] = []) -> \
+        AsyncGenerator[str, None]:
     """
     Full agent pipeline with streaming on the final formatting step.
     Steps 1-3 run normally (classify, fetch data).
@@ -26,7 +27,7 @@ AsyncGenerator[str, None]:
 
     # ── Step 2: LLM classifies query and generates SQL or search phrase ──
     # This step does NOT stream — we need the full decision before proceeding
-    decision = classify_and_generate_query(query, permission_ctx)
+    decision = classify_and_generate_query(query, permission_ctx, chat_history)
 
     print(f"🧠 LLM Decision: {decision['reasoning']}")  # helpful for debugging
 
@@ -71,7 +72,12 @@ AsyncGenerator[str, None]:
         role=role,
         original_query=query,
         raw_data=raw_data,
-        data_source=data_source
+        data_source=data_source,
+        # In formatter.py — pass last 4 exchanges so LLM has context
+        history_text="\n".join(
+            f"{m['role'].upper()}: {m['content']}"
+            for m in chat_history[-4:]  # last 4 messages only (token budget)
+        )
     )
 
     # .stream() yields tokens one by one as LLM generates them

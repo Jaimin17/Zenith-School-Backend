@@ -1,43 +1,76 @@
-import uuid
+# app/chatbot/permissions.py
 
-# This defines what tables/info each role can access
-# LLM will only be allowed to query within these boundaries
+import uuid
 
 ROLE_PERMISSIONS = {
     "student": {
-        "allowed_tables": ["attendance", "result", "lesson", "exam", "assignment", "announcement", "event"],
-        "scope": "own_data",  # only their own records
-        "description": "a student who can only see their own grades, attendance, schedule and announcements"
+        "allowed_tables": [
+            "student", "attendance", "result", "lesson",
+            "exam", "assignment", "announcement", "event",
+            "class", "grade", "subject",
+        ],
+        "scope": "own_data",
+        "description": "student",
     },
     "teacher": {
-        "allowed_tables": ["lesson", "exam", "assignment", "attendance", "result", "announcement", "event", "student"],
-        "scope": "class_data",  # students in their classes only
-        "description": "a teacher who can see their lessons, their students' data, exams and assignments they created"
+        "allowed_tables": [
+            "teacher", "lesson", "exam", "assignment", "attendance",
+            "result", "student", "class", "subject",
+            "teacher_subject_link", "announcement", "event", "grade",
+        ],
+        "scope": "class_data",
+        "description": "teacher",
     },
     "parent": {
-        "allowed_tables": ["attendance", "result", "lesson", "announcement", "event"],
-        "scope": "child_data",  # only their child's records
-        "description": "a parent who can only see their child's grades, attendance and school announcements"
+        "allowed_tables": [
+            "parent", "student", "attendance", "result", "lesson",
+            "exam", "assignment", "announcement", "event", "class", "grade", "subject",
+        ],
+        "scope": "child_data",
+        "description": "parent",
     },
     "admin": {
-        "allowed_tables": ["all"],
+        "allowed_tables": [
+            "student", "teacher", "parent", "admin",
+            "class", "grade", "subject", "teacher_subject_link",
+            "lesson", "exam", "assignment",
+            "result", "attendance", "announcement", "event",
+        ],
         "scope": "all_data",
-        "description": "an admin who can see all school data including all students, teachers, classes and results"
-    }
+        "description": "admin",
+    },
 }
 
 
 def get_user_permission_context(role: str, user_id: uuid.UUID, extra: dict) -> dict:
-    """Returns permission info to inject into LLM prompt."""
-    perm = ROLE_PERMISSIONS.get(role, {})
+    """
+    Builds the permission context dict injected into classifier prompts.
 
-    context = {
+    Args:
+        role:     'student' | 'teacher' | 'parent' | 'admin'
+        user_id:  UUID of the logged-in user
+        extra:    e.g. {'child_id': '...'} pre-resolved for parent role
+
+    Returns:
+        Dict with role, user_id, scope, allowed_tables, description, extra
+    """
+    perm = ROLE_PERMISSIONS.get(role)
+
+    if not perm:
+        return {
+            "role": "unknown",
+            "user_id": str(user_id),
+            "scope": "no_access",
+            "allowed_tables": [],
+            "description": "unknown",
+            "extra": extra,
+        }
+
+    return {
         "role": role,
         "user_id": str(user_id),
-        "scope": perm.get("scope"),
-        "allowed_tables": perm.get("allowed_tables", []),
-        "description": perm.get("description", ""),
+        "scope": perm["scope"],
+        "allowed_tables": perm["allowed_tables"],
+        "description": perm["description"],
         "extra": extra,
     }
-
-    return context

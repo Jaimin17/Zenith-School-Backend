@@ -19,6 +19,7 @@ class PaginatedBaseResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str
+    chat_history: list[dict] = []  # [{"role": "user", "content": "..."}, ...]
 
 
 class UserBase(BaseModel):

@@ -38,6 +38,7 @@ async def chat(request: ChatRequest, current_user: AllUser, session: SessionDep)
                         user_id=user.id,
                         extra=student_ids,
                         session=session,
+                        chat_history=request.chat_history
                 ):
                     # Each token is sent as an SSE data event
                     payload = json.dumps({"type": "token", "value": token})
@@ -50,6 +51,7 @@ async def chat(request: ChatRequest, current_user: AllUser, session: SessionDep)
                         role=role,
                         user_id=user.id,
                         session=session,
+                        chat_history=request.chat_history
                 ):
                     # Each token is sent as an SSE data event
                     payload = json.dumps({"type": "token", "value": token})
