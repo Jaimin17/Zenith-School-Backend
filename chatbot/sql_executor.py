@@ -4,6 +4,8 @@ import re
 
 # Hard block dangerous keywords — safety net even if LLM slips
 BLOCKED_KEYWORDS = ["drop", "delete", "update", "insert", "alter", "truncate", "create"]
+MAX_ROWS = 100
+QUERY_TIMEOUT_MS = 5000
 
 
 def is_safe_query(sql: str) -> bool:
@@ -23,7 +25,9 @@ def execute_sql_query(sql: str, session: SessionDep) -> list[dict]:
         return [{"error": "Query blocked for safety reasons."}]
 
     try:
-        result = session.exec(text(sql))
+        session.exec(text("SET statement_timeout = '5s'"))
+        sql_with_limit = sql.rstrip(";") + f" LIMIT {MAX_ROWS};"
+        result = session.exec(text(sql_with_limit))
         rows = result.fetchall()
         columns = result.keys()
         # Convert to list of dicts so it's readable

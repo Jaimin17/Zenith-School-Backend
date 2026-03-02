@@ -789,3 +789,24 @@ class AttendanceTakeResponse(SQLModel):
     updated_count: int
     present_count: int
     absent_count: int
+
+
+class BannerDetail(SQLModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    img: str
+    created_at: datetime
+    is_active: bool
+
+
+class PaginatedBannerResponse(PaginatedBaseResponse):
+    data: List[BannerDetail]
+
+
+class PhotoGalleryDetail(BannerDetail):
+    pass
+
+
+class PaginatedPhotoGalleryResponse(PaginatedBaseResponse):
+    data: List[PhotoGalleryDetail]

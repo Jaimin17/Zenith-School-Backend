@@ -7,7 +7,7 @@ from chatbot.schema_reference import (
 )
 import re
 
-llm = OllamaLLM(model="llama3.2", temperature=0)
+llm = OllamaLLM(model="tinyllama", temperature=0)
 
 # ─────────────────────────────────────────────────────────────────
 # PROMPT 1: TYPE DECIDER  (~200 tokens)
@@ -199,6 +199,18 @@ def _decide_type(query: str, chat_history: list[dict]) -> str:
     return result
 
 
+def _validate_sql_for_role(sql: str, role: str, user_id: str, extra: dict) -> bool:
+    """Hard enforcement — LLM output must contain the right WHERE clause."""
+    if role == "student":
+        return user_id.lower() in sql.lower()
+    if role == "parent":
+        child_id = extra.get("child_id", "")
+        return child_id.lower() in sql.lower() if child_id else True
+    if role == "teacher":
+        return user_id.lower() in sql.lower()
+    return True  # admin: no restriction
+
+
 # ─────────────────────────────────────────────────────────────────
 # STEP 2: Generate SQL
 # ─────────────────────────────────────────────────────────────────
@@ -241,6 +253,10 @@ def _generate_sql(query: str, permission_ctx: dict, chat_history: list[dict]) ->
 
     # Python-level safety net: fix LOWER()= or exact = to ILIKE
     raw = _enforce_ilike(raw)
+
+    if not _validate_sql_for_role(raw, role, user_id, extra):
+        print("🚫 Security: mandatory filter missing from generated SQL")
+        return None
 
     print(f"📝 SQL:\n{raw}\n")
     return raw

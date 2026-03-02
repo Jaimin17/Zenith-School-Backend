@@ -279,3 +279,23 @@ class BlacklistToken(SQLModel, table=True):
     access_token: str = Field(nullable=False)
     refresh_token: str = Field(nullable=False)
     created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+
+
+class Banner(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    title: str = Field(nullable=False)
+    description: str = Field(nullable=False)
+    img: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+    is_active: bool = Field(default=False, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
+
+
+class PhotoGallery(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    title: str = Field(nullable=False)
+    description: str = Field(nullable=False)
+    img: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+    is_active: bool = Field(default=False, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)

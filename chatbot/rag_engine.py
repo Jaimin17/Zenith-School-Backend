@@ -10,7 +10,7 @@ import uuid, json
 from typing import AsyncGenerator
 
 # Separate LLM instance for streaming (formatter step only)
-streaming_llm = OllamaLLM(model="llama3.2", temperature=0.3, streaming=True)
+streaming_llm = OllamaLLM(model="tinyllama", temperature=0.3, streaming=True)
 
 
 async def run_agent_stream(session: Session, query: str, role: str, user_id: uuid.UUID, extra: dict = {},
