@@ -810,3 +810,17 @@ class PhotoGalleryDetail(BannerDetail):
 
 class PaginatedPhotoGalleryResponse(PaginatedBaseResponse):
     data: List[PhotoGalleryDetail]
+
+
+class TestimonialsDetail(SQLModel):
+    id: uuid.UUID
+    rating: float
+    description: str
+    student: StudentBase
+    is_active: bool
+    is_delete: bool
+    created_at: datetime
+
+
+class PaginatedTestimonialsResponse(PaginatedBaseResponse):
+    data: List[TestimonialsDetail]

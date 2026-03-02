@@ -7,7 +7,9 @@ from chatbot.schema_reference import (
 )
 import re
 
-llm = OllamaLLM(model="tinyllama", temperature=0)
+from core.config import settings
+
+llm = OllamaLLM(model=settings.CHATBOT_MODEL, temperature=0)
 
 # ─────────────────────────────────────────────────────────────────
 # PROMPT 1: TYPE DECIDER  (~200 tokens)

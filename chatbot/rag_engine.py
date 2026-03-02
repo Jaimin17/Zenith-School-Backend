@@ -9,8 +9,10 @@ from langchain_ollama import OllamaLLM
 import uuid, json
 from typing import AsyncGenerator
 
+from core.config import settings
+
 # Separate LLM instance for streaming (formatter step only)
-streaming_llm = OllamaLLM(model="tinyllama", temperature=0.3, streaming=True)
+streaming_llm = OllamaLLM(model=settings.CHATBOT_MODEL, temperature=0.3, streaming=True)
 
 
 async def run_agent_stream(session: Session, query: str, role: str, user_id: uuid.UUID, extra: dict = {},

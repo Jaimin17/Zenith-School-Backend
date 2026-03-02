@@ -190,6 +190,7 @@ class Student(SQLModel, table=True):
 
     attendances: List["Attendance"] = Relationship(back_populates="student")
     results: List["Result"] = Relationship(back_populates="student")
+    testimonials: Optional["Testimonials"] = Relationship(back_populates="student")
 
 
 # ===================== Lesson =====================
@@ -297,5 +298,18 @@ class PhotoGallery(SQLModel, table=True):
     description: str = Field(nullable=False)
     img: str = Field(nullable=False)
     created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+    is_active: bool = Field(default=False, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
+
+
+class Testimonials(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    rating: float = Field(default=5, nullable=False, max_items=5, min_items=1)
+    description: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+
+    student_id: uuid.UUID = Field(nullable=False, foreign_key="student.id")
+    student: Student = Relationship(back_populates="testimonials")
+
     is_active: bool = Field(default=False, nullable=False)
     is_delete: bool = Field(default=False, nullable=False)

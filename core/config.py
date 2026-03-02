@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     ALLOWED_PDF_EXTENSIONS: str = ".pdf"
     MAX_PDF_FILE_SIZE: int = 10 * 1024 * 1024
 
+    CHATBOT_MODEL: str
+
     @property
     def allowed_extensions(self) -> set[str]:
         """Get allowed extensions as a set"""
