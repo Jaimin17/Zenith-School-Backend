@@ -1,15 +1,15 @@
 import uuid
 from datetime import datetime, date, timezone
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from fastapi.params import Form
 
 from core.database import SessionDep
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from deps import CurrentUser, AllUser, AdminUser
 from repository.events import getAllEventsIsDeleteFalse, getAllEventsByTeacherAndIsDeleteFalse, \
     getAllEventsByStudentAndIsDeleteFalse, getAllEventsByParentAndIsDeleteFalse, getAllEventsByDate, eventSave, \
-    eventUpdate, EventSoftDelete, getEventById
+    eventUpdate, EventSoftDelete, getEventById, getAllPublicEventsAndIsDeleteFalse
 from schemas import EventRead, EventBase, SaveResponse, EventSave, EventUpdate, PaginatedEventResponse
 
 router = APIRouter(
@@ -28,6 +28,12 @@ def getAllEvents(current_user: AllUser, session: SessionDep, search: str = None,
         all_events = getAllEventsByStudentAndIsDeleteFalse(user.id, session, search, page)
     else:
         all_events = getAllEventsByParentAndIsDeleteFalse(user.id, session, search, page)
+    return all_events
+
+
+@router.get("/getAllPublicEvents", response_model=PaginatedEventResponse)
+def getAllPublicEvents(session: SessionDep, page: int = 1):
+    all_events = getAllPublicEventsAndIsDeleteFalse(session, page)
     return all_events
 
 
@@ -120,11 +126,12 @@ def getAllByDate(current_user: AllUser, session: SessionDep, selectDate: str | N
 
 
 @router.post("/save", response_model=SaveResponse)
-def saveEvents(
+async def saveEvents(
         current_user: AdminUser,
         session: SessionDep,
         title: str = Form(...),
         description: str = Form(...),
+        img: list[Union[str, UploadFile]] = File(...),
         start_time: datetime = Form(...),
         end_time: datetime = Form(...),
         class_id: Optional[str] = Form(None)
@@ -162,8 +169,8 @@ def saveEvents(
         )
 
     event_start = start_time
-    if event_start.tzinfo is None:
-        event_start = event_start.replace(tzinfo=timezone.utc)
+    # if event_start.tzinfo is None:
+    #     event_start = event_start.replace(tzinfo=timezone.utc)
 
     if event_start < datetime.now(timezone.utc):
         raise HTTPException(
@@ -181,6 +188,18 @@ def saveEvents(
                 detail="class Id is not a valid type."
             )
 
+    processed_imgs: list[UploadFile] = [
+        image for image in img
+        if image is not None and not isinstance(image, str)
+           and hasattr(image, 'filename') and hasattr(image, 'file') and image.filename
+    ]
+
+    if not processed_imgs:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one valid image file must be uploaded."
+        )
+
     event_data: EventSave = EventSave(
         title=title.strip(),
         description=description.strip(),
@@ -189,12 +208,12 @@ def saveEvents(
         class_id=classId
     )
 
-    result = eventSave(event_data, session)
+    result = await eventSave(event_data, processed_imgs, session)
     return result
 
 
 @router.put("/update", response_model=SaveResponse)
-def updateEvent(
+async def updateEvent(
         current_user: AdminUser,
         session: SessionDep,
         id: str = Form(...),
@@ -202,7 +221,8 @@ def updateEvent(
         description: str = Form(...),
         start_time: datetime = Form(...),
         end_time: datetime = Form(...),
-        class_id: Optional[str] = Form(None)
+        class_id: Optional[str] = Form(None),
+        img: list[Union[str, UploadFile]] = File(default=[])
 ):
     user, role = current_user
 
@@ -251,8 +271,8 @@ def updateEvent(
         )
 
     event_start = start_time
-    if event_start.tzinfo is None:
-        event_start = event_start.replace(tzinfo=timezone.utc)
+    # if event_start.tzinfo is None:
+    #     event_start = event_start.replace(tzinfo=timezone.utc)
 
     classId = None
     if class_id:
@@ -264,6 +284,12 @@ def updateEvent(
                 detail="class Id is not a valid type."
             )
 
+    processed_imgs: list[UploadFile] = [
+        image for image in img
+        if image is not None and not isinstance(image, str)
+           and hasattr(image, 'filename') and hasattr(image, 'file') and image.filename
+    ]
+
     event_data: EventUpdate = EventUpdate(
         id=ID,
         title=title.strip(),
@@ -273,7 +299,7 @@ def updateEvent(
         class_id=classId
     )
 
-    result = eventUpdate(event_data, session)
+    result = await eventUpdate(event_data, processed_imgs, session)
     return result
 
 

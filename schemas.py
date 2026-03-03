@@ -190,8 +190,30 @@ class EventBase(SQLModel):
     id: uuid.UUID
     title: str
     description: str
+    img: List[str] = []
     start_time: datetime
     end_time: datetime
+
+    @field_validator('img', mode='before')
+    @classmethod
+    def parse_img_to_list(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            import json, ast
+            # Try valid JSON first (double-quoted array)
+            try:
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, list) else [v]
+            except (json.JSONDecodeError, ValueError):
+                pass
+            # Fallback: Python repr string e.g. "['a.jpg', 'b.jpg']"
+            try:
+                parsed = ast.literal_eval(v)
+                return parsed if isinstance(parsed, list) else [v]
+            except (ValueError, SyntaxError):
+                return [v] if v else []
+        return v
 
 
 class AnnouncementBase(SQLModel):

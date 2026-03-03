@@ -2,15 +2,20 @@ import uuid
 from datetime import date, time, timezone
 from typing import Optional
 
+from PIL.ImageChops import offset
 from fastapi import HTTPException
 from psycopg import IntegrityError
 from sqlalchemy import Select, func
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, or_, and_
 from datetime import datetime
+from fastapi import UploadFile
 from core.config import settings
+from core.FileStorage import process_and_save_image, cleanup_image
 from models import Event, Class, Student
 from schemas import EventSave, EventUpdate, PaginatedEventResponse
+
+EVENT_IMAGE_FOLDER = "events"
 
 
 def addSearchOption(query: Select, search: str):
@@ -86,6 +91,40 @@ def getEventById(session: Session, eventId: uuid.UUID):
 
     event_detail: Optional[Event] = session.exec(query).first()
     return event_detail
+
+
+def getAllPublicEventsAndIsDeleteFalse(session: Session, page: int):
+    offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    # Count query
+    count_query = (
+        select(func.count(Event.id.distinct()))
+        .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
+        .where(Event.is_delete == False)
+    )
+    total_count = session.exec(count_query).one()
+
+    # Data query
+    query = (
+        select(Event)
+        .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
+        .where(Event.is_delete == False)
+    )
+    query = query.order_by(Event.start_time.desc())
+    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
+    events = session.exec(query).unique().all()
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedEventResponse(
+        data=events,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
 
 
 def getAllEventsIsDeleteFalse(session: Session, search: str, page: int):
@@ -254,7 +293,7 @@ def getAllEventsByParentAndIsDeleteFalse(parentId, session, search, page):
     )
 
 
-def eventSave(event: EventSave, session: Session):
+async def eventSave(event: EventSave, images: list[UploadFile], session: Session):
     title = event.title.strip()
     description = event.description.strip()
 
@@ -321,9 +360,20 @@ def eventSave(event: EventSave, session: Session):
                 detail=f"Time conflict: Another event '{conflicting_event.title}' is scheduled for this class at the same time."
             )
 
+    saved_filenames: list[str] = []
+    try:
+        for image in images:
+            filename = await process_and_save_image(image, EVENT_IMAGE_FOLDER, title)
+            saved_filenames.append(filename)
+    except ValueError as e:
+        for fname in saved_filenames:
+            cleanup_image(settings.UPLOAD_DIR_DP / EVENT_IMAGE_FOLDER / fname)
+        raise HTTPException(status_code=400, detail=str(e))
+
     new_event = Event(
         title=title,
         description=description,
+        img=str(saved_filenames),
         start_time=event.start_time,
         end_time=event.end_time,
         class_id=class_id,
@@ -350,7 +400,7 @@ def eventSave(event: EventSave, session: Session):
     }
 
 
-def eventUpdate(event: EventUpdate, session: Session):
+async def eventUpdate(event: EventUpdate, images: list[UploadFile], session: Session):
     title = event.title.strip()
     description = event.description.strip()
 
@@ -460,6 +510,23 @@ def eventUpdate(event: EventUpdate, session: Session):
     current_event.start_time = event.start_time
     current_event.end_time = event.end_time
     current_event.description = description
+
+    if images:
+        saved_filenames: list[str] = []
+        try:
+            for image in images:
+                filename = await process_and_save_image(image, EVENT_IMAGE_FOLDER, title)
+                saved_filenames.append(filename)
+        except ValueError as e:
+            for fname in saved_filenames:
+                cleanup_image(settings.UPLOAD_DIR_DP / EVENT_IMAGE_FOLDER / fname)
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Cleanup old images from disk before replacing
+        if current_event.img:
+            for old_filename in current_event.img:
+                cleanup_image(settings.UPLOAD_DIR_DP / EVENT_IMAGE_FOLDER / old_filename)
+        current_event.img = saved_filenames
 
     session.add(current_event)
 

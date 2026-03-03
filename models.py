@@ -4,6 +4,7 @@ import uuid
 from typing import Optional, List, TYPE_CHECKING
 
 from pydantic import EmailStr
+from sqlalchemy import JSON, Column
 from sqlmodel import SQLModel, Field, Relationship
 
 if TYPE_CHECKING:
@@ -120,6 +121,7 @@ class Event(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     title: str = Field(nullable=False)
     description: str = Field(nullable=False)
+    img: Optional[List[str]] = Field(default=None, sa_column=Column(JSON, nullable=True))
     start_time: datetime = Field(nullable=False)
     end_time: datetime = Field(nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
