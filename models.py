@@ -50,6 +50,20 @@ class Day(str, Enum):
     SATURDAY = "Saturday"
 
 
+class JobType(str, Enum):
+    FULL_TIME = "full_time"
+    PART_TIME = "part_time"
+    CONTRACT = "contract"
+    INTERNSHIP = "internship"
+
+
+class ApplicationStatus(str, Enum):
+    PENDING = "pending"
+    REVIEWED = "reviewed"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
 # ===================== Parent =====================
 class Parent(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -299,6 +313,7 @@ class PhotoGallery(SQLModel, table=True):
     title: str = Field(nullable=False)
     description: str = Field(nullable=False)
     img: str = Field(nullable=False)
+    is_sport: bool = Field(default=False, nullable=False)
     created_at: datetime = Field(default_factory=datetime.now, nullable=False)
     is_active: bool = Field(default=False, nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
@@ -314,4 +329,64 @@ class Testimonials(SQLModel, table=True):
     student: Student = Relationship(back_populates="testimonials")
 
     is_active: bool = Field(default=False, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
+
+
+class Achievements(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    title: str = Field(nullable=False)
+    description: str = Field(nullable=False)
+    img: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+    is_active: bool = Field(default=False, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
+
+
+class SportsPrograms(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    title: str = Field(nullable=False)
+    description: str = Field(nullable=False)
+    img: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+    is_active: bool = Field(default=False, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
+
+
+class JobOpenings(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    title: str = Field(nullable=False)
+    description: str = Field(nullable=False)
+    experience: int = Field(default=0, nullable=False)
+    positions: int = Field(default=1, nullable=False)
+    location: Optional[str] = Field(default=None)
+    salary_range: Optional[str] = Field(default=None)
+    deadline: Optional[date] = Field(default=None)
+    job_type: JobType = Field(default=JobType.FULL_TIME, nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+
+    subject_id: Optional[uuid.UUID] = Field(default=None, foreign_key="subject.id")
+
+    jobApplications: List["JobApplications"] = Relationship(back_populates="jobOpenings")
+
+    is_active: bool = Field(default=True, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
+
+
+class JobApplications(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    name: str = Field(nullable=False)
+    email: str = Field(nullable=False)
+    phone: str = Field(nullable=False)
+    location: str = Field(nullable=False)
+    portfolio_link: Optional[str] = Field(default=None)
+
+    jobOpening_id: uuid.UUID = Field(nullable=False, foreign_key="jobopenings.id")
+    jobOpenings: "JobOpenings" = Relationship(back_populates="jobApplications")
+
+    about_applicant: str = Field(nullable=False)
+    resume: str = Field(nullable=False)
+    status: ApplicationStatus = Field(default=ApplicationStatus.PENDING, nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+
+    is_reviewed: bool = Field(default=False, nullable=False)
     is_delete: bool = Field(default=False, nullable=False)

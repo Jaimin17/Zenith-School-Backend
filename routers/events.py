@@ -37,6 +37,19 @@ def getAllPublicEvents(session: SessionDep, page: int = 1):
     return all_events
 
 
+@router.get("/getPublicEventById/{eventId}", response_model=EventRead)
+def getPublicEventById(eventId: uuid.UUID, session: SessionDep):
+    event_detail = getEventById(session, eventId)
+
+    if not event_detail:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found with provided ID."
+        )
+
+    return event_detail
+
+
 @router.get("/getById/{eventId}", response_model=EventRead)
 def getById(eventId: uuid.UUID, current_user: AllUser, session: SessionDep):
     user, role = current_user
@@ -172,7 +185,8 @@ async def saveEvents(
     # if event_start.tzinfo is None:
     #     event_start = event_start.replace(tzinfo=timezone.utc)
 
-    if event_start < datetime.now(timezone.utc):
+    # if event_start < datetime.now(timezone.utc):
+    if event_start < datetime.now():
         raise HTTPException(
             status_code=400,
             detail="Event start time cannot be in the past."

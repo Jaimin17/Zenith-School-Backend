@@ -25,22 +25,33 @@ def addSearchOption(query: Select, search: str):
     return query
 
 
-def getAllPhotosActive(session: Session, search: str, page: int):
+def getAllPhotosActive(session: Session, search: str, is_sport: bool, page: int):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     # Base query for counting
     count_query = (
         select(func.count(PhotoGallery.id.distinct()))
-        .where(PhotoGallery.is_delete == False)
+        .where(
+            PhotoGallery.is_delete == False,
+        )
     )
+
+    if is_sport is not None:
+        count_query = count_query.where(PhotoGallery.is_sport == is_sport)
+
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
     # Main query for data
     query = (
         select(PhotoGallery)
-        .where(PhotoGallery.is_delete == False)
+        .where(
+            PhotoGallery.is_delete == False
+        )
     )
+
+    if is_sport is not None:
+        query = query.where(PhotoGallery.is_sport == is_sport)
     query = query.order_by(PhotoGallery.created_at.desc())
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -72,7 +83,8 @@ def getPhotoById(session: Session, photoId: uuid.UUID):
     return photo_detail
 
 
-async def photoSave(title: str, description: str, is_active: bool, image: Optional[UploadFile], session: Session):
+async def photoSave(title: str, description: str, is_active: bool, is_sport: bool, image: Optional[UploadFile],
+                    session: Session):
     title = title.strip()
     description = description.strip()
 
@@ -93,7 +105,8 @@ async def photoSave(title: str, description: str, is_active: bool, image: Option
         select(PhotoGallery)
         .where(
             PhotoGallery.title.ilike(f"%{title}%"),
-            PhotoGallery.is_delete == False
+            PhotoGallery.is_delete == False,
+            PhotoGallery.is_sport == is_sport,
         )
     )
     duplicate_photo: Optional[PhotoGallery] = session.exec(duplicate_query).first()
@@ -123,6 +136,7 @@ async def photoSave(title: str, description: str, is_active: bool, image: Option
         description=description,
         img=image_filename,
         is_active=is_active,
+        is_sport=is_sport,
         is_delete=False
     )
 
@@ -148,11 +162,15 @@ async def photoSave(title: str, description: str, is_active: bool, image: Option
     }
 
 
-async def photoUpdate(photoId: uuid.UUID, title: str, description: str, is_active: bool,
+async def photoUpdate(photoId: uuid.UUID, title: str, description: str, is_active: bool, is_sport: bool,
                       image: Optional[UploadFile], session: Session):
     photo_query = (
         select(PhotoGallery)
-        .where(PhotoGallery.id == photoId, PhotoGallery.is_delete == False)
+        .where(
+            PhotoGallery.id == photoId,
+            PhotoGallery.is_delete == False,
+            PhotoGallery.is_sport == is_sport,
+        )
     )
 
     current_photo: Optional[PhotoGallery] = session.exec(photo_query).first()
@@ -184,7 +202,8 @@ async def photoUpdate(photoId: uuid.UUID, title: str, description: str, is_activ
         .where(
             PhotoGallery.title.ilike(f"%{title}%"),
             PhotoGallery.id != current_photo.id,
-            PhotoGallery.is_delete == False
+            PhotoGallery.is_delete == False,
+            PhotoGallery.is_sport == is_sport,
         )
     )
     duplicate_photo: Optional[PhotoGallery] = session.exec(duplicate_query).first()
@@ -210,6 +229,7 @@ async def photoUpdate(photoId: uuid.UUID, title: str, description: str, is_activ
     current_photo.title = title
     current_photo.description = description
     current_photo.is_active = is_active
+    current_photo.is_sport = is_sport
 
     session.add(current_photo)
 

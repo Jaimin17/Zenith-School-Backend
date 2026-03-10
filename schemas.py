@@ -827,6 +827,7 @@ class PaginatedBannerResponse(PaginatedBaseResponse):
 
 
 class PhotoGalleryDetail(BannerDetail):
+    is_sport: bool
     pass
 
 
@@ -846,3 +847,80 @@ class TestimonialsDetail(SQLModel):
 
 class PaginatedTestimonialsResponse(PaginatedBaseResponse):
     data: List[TestimonialsDetail]
+
+
+class AchievementDetail(SQLModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    img: str
+    created_at: datetime
+    is_active: bool
+    is_delete: bool
+
+
+class PaginatedAchievementsResponse(PaginatedBaseResponse):
+    data: List[AchievementDetail]
+
+
+class SportsProgramDetail(BannerDetail):
+    pass
+
+
+class PaginatedSportsProgramsResponse(PaginatedBaseResponse):
+    data: List[SportsProgramDetail]
+
+
+# ===================== JobOpenings Schemas =====================
+
+class JobOpeningRead(SQLModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    description: str
+    experience: int
+    positions: int
+    location: Optional[str] = None
+    salary_range: Optional[str] = None
+    deadline: Optional[date] = None
+    job_type: str
+    subject_id: Optional[uuid.UUID] = None
+    is_active: bool
+    is_delete: bool
+    created_at: datetime
+    total_applications: Optional[int] = None
+
+
+class PaginatedJobOpeningResponse(PaginatedBaseResponse):
+    data: List[JobOpeningRead]
+
+
+# ===================== JobApplications Schemas =====================
+
+class JobApplicationRead(SQLModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    email: str
+    phone: str
+    location: str
+    portfolio_link: Optional[str] = None
+    jobOpening_id: uuid.UUID
+    about_applicant: str
+    resume: str
+    status: str
+    is_reviewed: bool
+    is_delete: bool
+    created_at: datetime
+
+
+class JobApplicationDetail(JobApplicationRead):
+    model_config = ConfigDict(from_attributes=True)
+
+    jobOpenings: Optional[JobOpeningRead] = None
+
+
+class PaginatedJobApplicationResponse(PaginatedBaseResponse):
+    data: List[JobApplicationDetail]

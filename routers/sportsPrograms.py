@@ -3,44 +3,44 @@ from typing import Optional, Union
 
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 from core.database import SessionDep
+from models import SportsPrograms
+from repository.sportsPrograms import getAllSportsProgramsActive, getSportsProgramById, sportsProgramSave, \
+    sportsProgramUpdate, sportsProgramToggleActive, sportsProgramSoftDelete
+from schemas import SaveResponse, PaginatedSportsProgramsResponse, \
+    SportsProgramDetail
 from deps import AdminUser
-from models import PhotoGallery
-from repository.photoGallery import getAllPhotosActive, getPhotoById, photoSave, photoUpdate, photoToggleActive, \
-    photoSoftDelete
-from schemas import PaginatedPhotoGalleryResponse, PhotoGalleryDetail, SaveResponse
 
 router = APIRouter(
-    prefix="/photoGallery",
+    prefix="/sportProgram",
 )
 
 
-@router.get("/getAll", response_model=PaginatedPhotoGalleryResponse)
-def getAllPhotos(session: SessionDep, search: str = None, is_sport: bool = None, page: int = 1):
-    photos = getAllPhotosActive(session=session, search=search, is_sport=is_sport, page=page)
-    return photos
+@router.get("/getAll", response_model=PaginatedSportsProgramsResponse)
+def getAllSportsPrograms(session: SessionDep, search: str = None, page: int = 1):
+    sportsPrograms = getAllSportsProgramsActive(session=session, search=search, page=page)
+    return sportsPrograms
 
 
-@router.get("/get/{photoId}", response_model=PhotoGalleryDetail)
-def getById(current_user: AdminUser, session: SessionDep, photoId: uuid.UUID):
-    photo_detail: Optional[PhotoGallery] = getPhotoById(session, photoId)
+@router.get("/get/{sportId}", response_model=SportsProgramDetail)
+def getById(current_user: AdminUser, session: SessionDep, sportId: uuid.UUID):
+    sport_detail: Optional[SportsPrograms] = getSportsProgramById(session, sportId)
 
-    if not photo_detail:
+    if not sport_detail:
         raise HTTPException(
             status_code=404,
-            detail="Photo not found with provided ID."
+            detail="Sports program not found with provided ID."
         )
 
-    return photo_detail
+    return sport_detail
 
 
 @router.post("/save", response_model=SaveResponse)
-async def savePhoto(
+async def saveSportsProgram(
         current_user: AdminUser,
         session: SessionDep,
         title: str = Form(...),
         description: str = Form(...),
         is_active: bool = Form(False),
-        is_sport: bool = Form(...),
         image: Union[UploadFile, str] = File()
 ):
     processed_image: Optional[UploadFile] = None
@@ -51,30 +51,29 @@ async def savePhoto(
     if not processed_image:
         raise HTTPException(
             status_code=400,
-            detail="Image is required."
+            detail="Banner image is required."
         )
 
-    response = await photoSave(title, description, is_active, is_sport, processed_image, session)
+    response = await sportsProgramSave(title, description, is_active, processed_image, session)
     return response
 
 
 @router.put("/update", response_model=SaveResponse)
-async def updatePhoto(
+async def updateSportsProgram(
         current_user: AdminUser,
         session: SessionDep,
         id: str = Form(...),
         title: str = Form(...),
         description: str = Form(...),
-        is_sport: bool = Form(...),
         is_active: bool = Form(False),
         image: Union[UploadFile, str, None] = File(None)
 ):
     try:
-        photoId = uuid.UUID(id.strip())
+        sportsId = uuid.UUID(id.strip())
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid photo UUID format: {str(e)}"
+            detail=f"Invalid Sports Program UUID format: {str(e)}"
         )
 
     processed_image: Optional[UploadFile] = None
@@ -82,17 +81,17 @@ async def updatePhoto(
         if hasattr(image, 'filename') and hasattr(image, 'file') and image.filename:
             processed_image = image
 
-    response = await photoUpdate(photoId, title, description, is_active, is_sport, processed_image, session)
+    response = await sportsProgramUpdate(sportsId, title, description, is_active, processed_image, session)
     return response
 
 
 @router.patch("/toggle-active", response_model=SaveResponse)
-def togglePhotoActive(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
-    result = photoToggleActive(id, session)
+def toggleSportsProgramActive(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
+    result = sportsProgramToggleActive(id, session)
     return result
 
 
 @router.delete("/delete", response_model=SaveResponse)
-def deletePhoto(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
-    result = photoSoftDelete(id, session)
+def deleteSportsProgram(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
+    result = sportsProgramSoftDelete(id, session)
     return result

@@ -128,3 +128,38 @@ def cleanup_pdf(filepath: Path) -> None:
             filepath.unlink()
     except Exception:
         pass
+
+
+async def process_and_save_resume(file: UploadFile, applicant_name: str) -> str:
+    """Save a resume PDF to uploads/pdfs/job_applications/ with a resume_ filename prefix."""
+    file_ext = Path(file.filename).suffix.lower()
+
+    if file_ext not in settings.ALLOWED_PDF_EXTENSIONS:
+        raise ValueError(f"Invalid file type. Only PDF files are allowed.")
+
+    contents = await file.read()
+    file_size = len(contents)
+
+    if file_size > settings.MAX_PDF_FILE_SIZE:
+        raise ValueError(f"File too large. Maximum size: {settings.MAX_PDF_FILE_SIZE / (1024 * 1024):.1f}MB")
+
+    if not contents.startswith(b'%PDF'):
+        raise ValueError("File is not a valid PDF document.")
+
+    upload_dir_path = settings.UPLOAD_DIR_PDF / "job_applications"
+    upload_dir_path.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = str(uuid.uuid4())[:8]
+    clean_name = re.sub(r'[^a-zA-Z0-9]', '_', applicant_name.lower())[:40]
+    filename = f"resume_{clean_name}_{timestamp}_{unique_id}{file_ext}"
+    filepath = upload_dir_path / filename
+
+    try:
+        with open(filepath, "wb") as f:
+            f.write(contents)
+        return filename
+    except Exception as e:
+        if filepath.exists():
+            filepath.unlink(missing_ok=True)
+        raise ValueError(f"Failed to save resume: {str(e)}")
