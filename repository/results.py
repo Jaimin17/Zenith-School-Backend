@@ -43,7 +43,8 @@ def getAllResultsIsDeleteFalse(
         class_id: str = None,
         exam_id: str = None,
         assignment_id: str = None,
-        result_type: str = None
+        result_type: str = None,
+        academic_year_id: uuid.UUID = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
@@ -65,6 +66,9 @@ def getAllResultsIsDeleteFalse(
 
     if class_id:
         where_conditions.append(Lesson.class_id == class_id)
+
+    if academic_year_id:
+        where_conditions.append(Lesson.academic_year_id == academic_year_id)
 
     # COUNT QUERY
     count_query = (
@@ -127,7 +131,8 @@ def getAllResultsByTeacherIsDeleteFalse(
         class_id: str = None,
         exam_id: str = None,
         assignment_id: str = None,
-        result_type: str = None
+        result_type: str = None,
+        academic_year_id: uuid.UUID = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
@@ -152,6 +157,9 @@ def getAllResultsByTeacherIsDeleteFalse(
 
     if class_id:
         where_conditions.append(Lesson.class_id == class_id)
+
+    if academic_year_id:
+        where_conditions.append(Lesson.academic_year_id == academic_year_id)
 
     # COUNT QUERY
     count_query = (
@@ -267,7 +275,8 @@ def getAllResultsOfStudentIsDeleteFalse(
         class_id: str = None,
         exam_id: str = None,
         assignment_id: str = None,
-        result_type: str = None
+        result_type: str = None,
+        academic_year_id: uuid.UUID = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
@@ -292,6 +301,9 @@ def getAllResultsOfStudentIsDeleteFalse(
 
     if class_id:
         where_conditions.append(Lesson.class_id == class_id)
+
+    if academic_year_id:
+        where_conditions.append(Lesson.academic_year_id == academic_year_id)
 
     # COUNT QUERY
     count_query = (
@@ -780,3 +792,46 @@ def ResultSoftDelete(id: uuid.UUID, userId: uuid.UUID, role: str, session: Sessi
         "id": str(current_result.id),
         "message": "Result soft-deleted successfully."
     }
+
+
+# ===================== Historical Data (by Date Range) =====================
+
+def getStudentResultsByDateRange(
+        student_id: uuid.UUID,
+        start_date,
+        end_date,
+        session: Session,
+):
+    """
+    Return all results for a student where the linked exam/assignment falls within
+    the given date range. Used for viewing historical year data.
+    """
+    from datetime import date as _date, datetime as _datetime
+    from models import Result as _Result
+
+    query = (
+        select(Result)
+        .join(Student, Student.id == Result.student_id)
+        .join(Exam, Exam.id == Result.exam_id, isouter=True)
+        .join(Assignment, Assignment.id == Result.assignment_id, isouter=True)
+        .join(
+            Lesson,
+            (Lesson.id == Exam.lesson_id) | (Lesson.id == Assignment.lesson_id),
+            isouter=True,
+        )
+        .join(Teacher, Teacher.id == Lesson.teacher_id, isouter=True)
+        .where(
+            Result.student_id == student_id,
+            Result.is_delete == False,
+            (
+                    (Exam.start_time >= _datetime.combine(start_date, _datetime.min.time())) |
+                    (Assignment.due_date >= start_date)
+            ),
+            (
+                    (Exam.end_time <= _datetime.combine(end_date, _datetime.max.time())) |
+                    (Assignment.due_date <= end_date)
+            ),
+        )
+        .order_by(Result.id)
+    )
+    return session.exec(query).unique().all()

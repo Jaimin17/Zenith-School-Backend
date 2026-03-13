@@ -1,12 +1,16 @@
 import uuid
 from http.client import HTTPException
+from typing import Optional
 
 from fastapi import APIRouter
 from fastapi.params import Form
 from pyexpat.errors import messages
+from sqlalchemy import func
+from sqlmodel import select
 
 from deps import AdminUser
 from core.database import SessionDep
+from models import StudentClassHistory, Student as StudentModel, UserSex
 from repository.admin import countAdmin, updateAdminPassword
 from repository.parent import countParent
 from repository.student import countStudent
@@ -24,11 +28,42 @@ def count(current_user: AdminUser, session: SessionDep):
 
 
 @router.get("/allUsersCount", response_model=UsersCount)
-def usersCount(current_user: AdminUser, session: SessionDep):
+def usersCount(current_user: AdminUser, session: SessionDep, year_id: Optional[uuid.UUID] = None):
     admin_count = countAdmin(session)
-    teacher_count = countTeacher(session)
-    student_count = countStudent(session)
-    parent_count = countParent(session)
+    if year_id:
+        boys_count = session.exec(
+            select(func.count(StudentClassHistory.student_id.distinct()))
+            .join(StudentModel, StudentModel.id == StudentClassHistory.student_id)
+            .where(
+                StudentClassHistory.academic_year_id == year_id,
+                StudentModel.is_delete == False,
+                StudentModel.sex == UserSex.MALE,
+            )
+        ).one()
+        girls_count = session.exec(
+            select(func.count(StudentClassHistory.student_id.distinct()))
+            .join(StudentModel, StudentModel.id == StudentClassHistory.student_id)
+            .where(
+                StudentClassHistory.academic_year_id == year_id,
+                StudentModel.is_delete == False,
+                StudentModel.sex == UserSex.FEMALE,
+            )
+        ).one()
+        student_count = {"boys": boys_count, "girls": girls_count}
+        teacher_count = countTeacher(session)
+        parent_count = session.exec(
+            select(func.count(StudentModel.parent_id.distinct()))
+            .join(StudentClassHistory, StudentClassHistory.student_id == StudentModel.id)
+            .where(
+                StudentClassHistory.academic_year_id == year_id,
+                StudentModel.is_delete == False,
+                StudentModel.parent_id != None,
+            )
+        ).one()
+    else:
+        student_count = countStudent(session)
+        teacher_count = countTeacher(session)
+        parent_count = countParent(session)
 
     return UsersCount(
         admins=admin_count,

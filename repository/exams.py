@@ -23,13 +23,68 @@ def addSearchOption(query: Select, search: str):
     return query
 
 
-def getAllExamsIsDeleteFalse(session: Session, search: str, page: int):
+def getAllExamsIsDeleteFalse(session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Exam.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
+
+    if academic_year_id:
+        # Count query with Lesson join for year filter
+        count_query = (
+            select(func.count(Exam.id.distinct()))
+            .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
+            .where(*where_cond)
+        )
+    else:
+        count_query = (
+            select(func.count(Exam.id.distinct()))
+            .where(*where_cond)
+        )
+    count_query = addSearchOption(count_query, search)
+    total_count = session.exec(count_query).one()
+
+    if academic_year_id:
+        query = (
+            select(Exam)
+            .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
+            .where(*where_cond)
+        )
+    else:
+        query = (
+            select(Exam)
+            .where(*where_cond)
+        )
+    query = addSearchOption(query, search)
+    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
+    all_exams = session.exec(query).unique().all()
+
+    # Calculate pagination metadata
+    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
+
+    return PaginatedExamResponse(
+        data=all_exams,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )
+
+
+def getAllExamsOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
+    offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Lesson.teacher_id == teacherId, Exam.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     # Count query
     count_query = (
         select(func.count(Exam.id.distinct()))
-        .where(Exam.is_delete == False)
+        .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
+        .where(*where_cond)
     )
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -37,7 +92,8 @@ def getAllExamsIsDeleteFalse(session: Session, search: str, page: int):
     # Data query
     query = (
         select(Exam)
-        .where(Exam.is_delete == False)
+        .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
+        .where(*where_cond)
     )
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -56,17 +112,18 @@ def getAllExamsIsDeleteFalse(session: Session, search: str, page: int):
     )
 
 
-def getAllExamsOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int):
+def getAllExamsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Lesson.class_id == classId, Exam.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     # Count query
     count_query = (
         select(func.count(Exam.id.distinct()))
         .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
-        .where(
-            Lesson.teacher_id == teacherId,
-            Exam.is_delete == False,
-        )
+        .where(*where_cond)
     )
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -75,51 +132,7 @@ def getAllExamsOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, se
     query = (
         select(Exam)
         .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
-        .where(
-            Lesson.teacher_id == teacherId,
-            Exam.is_delete == False,
-        )
-    )
-    query = addSearchOption(query, search)
-    query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
-    all_exams = session.exec(query).unique().all()
-
-    # Calculate pagination metadata
-    total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
-
-    return PaginatedExamResponse(
-        data=all_exams,
-        total_count=total_count,
-        page=page,
-        total_pages=total_pages,
-        has_next=page < total_pages,
-        has_prev=page > 1
-    )
-
-
-def getAllExamsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int):
-    offset_value = (page - 1) * settings.ITEMS_PER_PAGE
-
-    # Count query
-    count_query = (
-        select(func.count(Exam.id.distinct()))
-        .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
-        .where(
-            Lesson.class_id == classId,
-            Exam.is_delete == False,
-        )
-    )
-    count_query = addSearchOption(count_query, search)
-    total_count = session.exec(count_query).one()
-
-    # Data query
-    query = (
-        select(Exam)
-        .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
-        .where(
-            Lesson.class_id == classId,
-            Exam.is_delete == False,
-        )
+        .where(*where_cond)
     )
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -152,19 +165,19 @@ def getFullListOfExamsOfClassIsDeleteFalse(classId: uuid.UUID, session: Session)
     return all_exams
 
 
-def getAllExamsOfStudentIsDeleteFalse(studentId: uuid.UUID, session: Session, search: str, page: int):
+def getAllExamsOfStudentIsDeleteFalse(studentId: uuid.UUID, session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Student.id == studentId, Student.is_delete == False, Exam.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     # Count query
     count_query = (
         select(func.count(Exam.id.distinct()))
         .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
         .join(Student, onclause=(Student.class_id == Lesson.class_id))
-        .where(
-            Student.id == studentId,
-            Student.is_delete == False,
-            Exam.is_delete == False,
-        )
+        .where(*where_cond)
     )
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -174,11 +187,7 @@ def getAllExamsOfStudentIsDeleteFalse(studentId: uuid.UUID, session: Session, se
         select(Exam)
         .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
         .join(Student, onclause=(Student.class_id == Lesson.class_id))
-        .where(
-            Student.id == studentId,
-            Student.is_delete == False,
-            Exam.is_delete == False,
-        )
+        .where(*where_cond)
     )
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -197,8 +206,12 @@ def getAllExamsOfStudentIsDeleteFalse(studentId: uuid.UUID, session: Session, se
     )
 
 
-def getAllExamsOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int):
+def getAllExamsOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Student.parent_id == parentId, Exam.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     # Count query
     count_query = (
@@ -206,10 +219,7 @@ def getAllExamsOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, sear
         .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
         .join(Class, onclause=(Class.id == Lesson.class_id))
         .join(Student, onclause=(Student.class_id == Class.id))
-        .where(
-            Student.parent_id == parentId,
-            Exam.is_delete == False
-        )
+        .where(*where_cond)
     )
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -220,10 +230,7 @@ def getAllExamsOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, sear
         .join(Lesson, onclause=(Exam.lesson_id == Lesson.id))
         .join(Class, onclause=(Class.id == Lesson.class_id))
         .join(Student, onclause=(Student.class_id == Class.id))
-        .where(
-            Student.parent_id == parentId,
-            Exam.is_delete == False
-        )
+        .where(*where_cond)
     )
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)

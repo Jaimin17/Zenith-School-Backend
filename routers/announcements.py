@@ -16,16 +16,23 @@ router = APIRouter(
 
 
 @router.get("/getAll", response_model=PaginatedAnnouncementResponse)
-def getAllAnnouncements(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllAnnouncements(
+        current_user: AllUser,
+        session: SessionDep,
+        search: str = None,
+        page: int = 1,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+):
     user, role = current_user
     if role == "admin":
-        announcements = getAllAnnouncementsIsDeleteFalse(session, search, page)
+        announcements = getAllAnnouncementsIsDeleteFalse(session, search, page, from_date, to_date)
     elif role == "teacher":
-        announcements = getAllAnnouncementsByTeacherAndIsDeleteFalse(user.id, session, search, page)
+        announcements = getAllAnnouncementsByTeacherAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
     elif role == "student":
-        announcements = getAllAnnouncementsByStudentAndIsDeleteFalse(user.id, session, search, page)
+        announcements = getAllAnnouncementsByStudentAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
     else:
-        announcements = getAllAnnouncementsByParentAndIsDeleteFalse(user.id, session, search, page)
+        announcements = getAllAnnouncementsByParentAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
     return announcements
 
 

@@ -10,7 +10,7 @@ from sqlmodel import Session, select, or_, and_
 from starlette import status
 
 from core.config import settings
-from models import Lesson, Teacher, Class, Student, Subject, Exam, Assignment, Attendance, Parent
+from models import Lesson, Teacher, Class, Student, Subject, Exam, Assignment, Attendance, Parent, AcademicYear
 from schemas import LessonSave, LessonUpdate, PaginatedLessonResponse
 
 
@@ -32,14 +32,18 @@ def addSearchOption(query: Select, search: str):
     return query
 
 
-def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
+def getAllLessonIsDeleteFalse(session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Lesson.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     count_query = (
         select(func.count(Lesson.id.distinct()))
         .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
         .join(Class, onclause=(Lesson.class_id == Class.id))
-        .where(Lesson.is_delete == False)
+        .where(*where_cond)
     )
 
     count_query = addSearchOption(count_query, search)
@@ -54,7 +58,7 @@ def getAllLessonIsDeleteFalse(session: Session, search: str, page: int):
             selectinload(Lesson.related_class),
             selectinload(Lesson.subject)
         )
-        .where(Lesson.is_delete == False)
+        .where(*where_cond)
     )
 
     query = addSearchOption(query, search)
@@ -108,8 +112,12 @@ def getLessonById(lessonId: uuid.UUID, session: Session):
 
 
 def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, search: str, page: int,
-                                       withPagination: bool = True):
+                                       withPagination: bool = True, academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Lesson.teacher_id == teacherId, Lesson.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     if (not withPagination):
         query = (
@@ -119,10 +127,7 @@ def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, s
                 selectinload(Lesson.related_class),
                 selectinload(Lesson.subject)
             )
-            .where(
-                Lesson.teacher_id == teacherId,
-                Lesson.is_delete == False
-            )
+            .where(*where_cond)
         )
 
         all_lessons = session.exec(query).unique().all()
@@ -134,10 +139,7 @@ def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, s
             select(func.count(Lesson.id.distinct()))
             .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
             .join(Class, onclause=(Lesson.class_id == Class.id))
-            .where(
-                Lesson.teacher_id == teacherId,
-                Lesson.is_delete == False
-            )
+            .where(*where_cond)
         )
 
         count_query = addSearchOption(count_query, search)
@@ -152,10 +154,7 @@ def getAllLessonOfTeacherIsDeleteFalse(teacherId: uuid.UUID, session: Session, s
                 selectinload(Lesson.related_class),
                 selectinload(Lesson.subject)
             )
-            .where(
-                Lesson.teacher_id == teacherId,
-                Lesson.is_delete == False
-            )
+            .where(*where_cond)
         )
 
         query = addSearchOption(query, search)
@@ -216,17 +215,18 @@ def countAllLessonOfStudent(studentId: uuid.UUID, session: Session):
     return total_lessons
 
 
-def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int):
+def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Lesson.class_id == classId, Lesson.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     count_query = (
         select(func.count(Lesson.id.distinct()))
         .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
         .join(Class, onclause=(Lesson.class_id == Class.id))
-        .where(
-            Lesson.class_id == classId,
-            Lesson.is_delete == False
-        )
+        .where(*where_cond)
     )
 
     count_query = addSearchOption(count_query, search)
@@ -241,10 +241,7 @@ def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, searc
             selectinload(Lesson.related_class),
             selectinload(Lesson.subject)
         )
-        .where(
-            Lesson.class_id == classId,
-            Lesson.is_delete == False
-        )
+        .where(*where_cond)
     )
 
     query = addSearchOption(query, search)
@@ -345,18 +342,19 @@ def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user, 
     return lessons
 
 
-def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int):
+def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Student.parent_id == parentId, Lesson.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     count_query = (
         select(func.count(Lesson.id.distinct()))
         .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
         .join(Class, onclause=(Class.id == Lesson.class_id))
         .join(Student, onclause=(Student.class_id == Class.id))
-        .where(
-            Student.parent_id == parentId,
-            Lesson.is_delete == False
-        )
+        .where(*where_cond)
     )
 
     count_query = addSearchOption(count_query, search)
@@ -372,10 +370,7 @@ def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, sea
             selectinload(Lesson.related_class),
             selectinload(Lesson.subject)
         )
-        .where(
-            Student.parent_id == parentId,
-            Lesson.is_delete == False
-        )
+        .where(*where_cond)
     )
 
     query = addSearchOption(query, search)
@@ -537,6 +532,15 @@ def lessonSave(lesson: LessonSave, session: Session):
             detail=f"Teacher conflict: {teacher.first_name} {teacher.last_name} is already teaching '{teacher_conflict.name}' on {lesson.day} at the same time."
         )
 
+    # resolve academic_year_id — use provided or fall back to active year
+    academic_year_id = lesson.academic_year_id
+    if not academic_year_id:
+        active_year = session.exec(
+            select(AcademicYear).where(AcademicYear.is_active == True, AcademicYear.is_delete == False)
+        ).first()
+        if active_year:
+            academic_year_id = active_year.id
+
     new_lesson = Lesson(
         name=name,
         day=lesson.day,
@@ -545,6 +549,7 @@ def lessonSave(lesson: LessonSave, session: Session):
         subject_id=lesson.subject_id,
         class_id=lesson.class_id,
         teacher_id=lesson.teacher_id,
+        academic_year_id=academic_year_id,
         is_delete=False
     )
 
@@ -746,6 +751,41 @@ def lessonUpdate(lesson: LessonUpdate, session: Session):
         "id": str(currentLesson.id),
         "message": "Lesson updated successfully"
     }
+
+
+def getAllLessonsOfTeacherByYear(teacher_id: uuid.UUID, academic_year_id: uuid.UUID, session: Session):
+    query = (
+        select(Lesson)
+        .where(
+            Lesson.teacher_id == teacher_id,
+            Lesson.academic_year_id == academic_year_id,
+            Lesson.is_delete == False,
+        )
+    )
+    return session.exec(query).all()
+
+
+def getAllLessonsOfClassByYear(class_id: uuid.UUID, academic_year_id: uuid.UUID, session: Session):
+    query = (
+        select(Lesson)
+        .where(
+            Lesson.class_id == class_id,
+            Lesson.academic_year_id == academic_year_id,
+            Lesson.is_delete == False,
+        )
+    )
+    return session.exec(query).all()
+
+
+def getAllLessonsByYear(academic_year_id: uuid.UUID, session: Session):
+    query = (
+        select(Lesson)
+        .where(
+            Lesson.academic_year_id == academic_year_id,
+            Lesson.is_delete == False,
+        )
+    )
+    return session.exec(query).all()
 
 
 def lessonSoftDelete(id: uuid.UUID, session: Session):

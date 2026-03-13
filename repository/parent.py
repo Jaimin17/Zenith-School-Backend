@@ -8,7 +8,7 @@ from sqlmodel import Session, select, or_
 
 from core.config import settings
 from core.security import get_password_hash
-from models import Parent, Student
+from models import Parent, Student, StudentClassHistory
 from schemas import ParentSave, ParentUpdate, PaginatedParentResponse, updatePasswordModel
 
 
@@ -30,28 +30,52 @@ def countParent(session: Session):
     ).first()
 
 
-def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 1):
+def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 1, year_id=None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    count_query = (
-        select(func.count(Parent.id.distinct()))
-        .where(Parent.is_delete == False)
-    )
+    if year_id:
+        count_query = (
+            select(func.count(Parent.id.distinct()))
+            .join(Student, onclause=(Student.parent_id == Parent.id))
+            .join(StudentClassHistory, onclause=(StudentClassHistory.student_id == Student.id))
+            .where(
+                Parent.is_delete == False,
+                Student.is_delete == False,
+                StudentClassHistory.academic_year_id == year_id,
+            )
+        )
+    else:
+        count_query = (
+            select(func.count(Parent.id.distinct()))
+            .where(Parent.is_delete == False)
+        )
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
-    query = (
-        select(Parent)
-        .where(Parent.is_delete == False)
-    )
+    if year_id:
+        query = (
+            select(Parent)
+            .join(Student, onclause=(Student.parent_id == Parent.id))
+            .join(StudentClassHistory, onclause=(StudentClassHistory.student_id == Student.id))
+            .where(
+                Parent.is_delete == False,
+                Student.is_delete == False,
+                StudentClassHistory.academic_year_id == year_id,
+            )
+        )
+    else:
+        query = (
+            select(Parent)
+            .where(Parent.is_delete == False)
+        )
 
     query = query.order_by(func.lower(Parent.username))
 
     query = addSearchOption(query, search)
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
-    active_parents = session.exec(query).all()
+    active_parents = session.exec(query).unique().all()
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
 
     return PaginatedParentResponse(

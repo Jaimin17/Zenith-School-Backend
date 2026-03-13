@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi.params import Form
 
@@ -22,8 +22,14 @@ def register(current_user: AdminUser, session: SessionDep):
 
 
 @router.get("/getAll", response_model=PaginatedParentResponse)
-def getAllParent(current_user: TeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
-    all_parents = getAllParentIsDeleteFalse(session, search, page)
+def getAllParent(
+    current_user: TeacherOrAdminUser,
+    session: SessionDep,
+    search: str = None,
+    page: int = 1,
+    year_id: Optional[uuid.UUID] = None,
+):
+    all_parents = getAllParentIsDeleteFalse(session, search, page, year_id)
     return all_parents
 
 

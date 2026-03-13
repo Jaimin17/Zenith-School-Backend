@@ -12,7 +12,7 @@ from datetime import datetime
 from fastapi import UploadFile
 from core.config import settings
 from core.FileStorage import process_and_save_image, cleanup_image
-from models import Event, Class, Student
+from models import Event, Class, Student, StudentClassHistory, AcademicYear
 from schemas import EventSave, EventUpdate, PaginatedEventResponse
 
 EVENT_IMAGE_FOLDER = "events"
@@ -127,14 +127,20 @@ def getAllPublicEventsAndIsDeleteFalse(session: Session, page: int):
     )
 
 
-def getAllEventsIsDeleteFalse(session: Session, search: str, page: int):
+def getAllEventsIsDeleteFalse(session: Session, search: str, page: int, from_date: date = None, to_date: date = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Event.is_delete == False]
+    if from_date:
+        where_cond.append(func.date(Event.start_time) >= from_date)
+    if to_date:
+        where_cond.append(func.date(Event.start_time) <= to_date)
 
     # Count query
     count_query = (
         select(func.count(Event.id.distinct()))
         .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
-        .where(Event.is_delete == False)
+        .where(*where_cond)
     )
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -143,7 +149,7 @@ def getAllEventsIsDeleteFalse(session: Session, search: str, page: int):
     query = (
         select(Event)
         .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
-        .where(Event.is_delete == False)
+        .where(*where_cond)
     )
     query = query.order_by(Event.start_time.desc())
     query = addSearchOption(query, search)
@@ -163,17 +169,24 @@ def getAllEventsIsDeleteFalse(session: Session, search: str, page: int):
     )
 
 
-def getAllEventsByTeacherAndIsDeleteFalse(teacherId, session, search, page):
+def getAllEventsByTeacherAndIsDeleteFalse(teacherId, session, search, page, from_date: date = None,
+                                          to_date: date = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    base_cond = [
+        Event.is_delete == False,
+        (Class.supervisor_id == teacherId) | (Event.class_id == None)
+    ]
+    if from_date:
+        base_cond.append(func.date(Event.start_time) >= from_date)
+    if to_date:
+        base_cond.append(func.date(Event.start_time) <= to_date)
 
     # Count query
     count_query = (
         select(func.count(Event.id.distinct()))
         .join(Class, onclause=(Event.class_id == Class.id), isouter=True)
-        .where(
-            Event.is_delete == False,
-            (Class.supervisor_id == teacherId) | (Event.class_id == None)
-        )
+        .where(*base_cond)
     )
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -182,10 +195,7 @@ def getAllEventsByTeacherAndIsDeleteFalse(teacherId, session, search, page):
     query = (
         select(Event)
         .join(Class, onclause=(Event.class_id == Class.id), isouter=True)
-        .where(
-            Event.is_delete == False,
-            (Class.supervisor_id == teacherId) | (Event.class_id == None)
-        )
+        .where(*base_cond)
     )
     query = query.order_by(Event.start_time.desc())
     query = addSearchOption(query, search)
@@ -205,18 +215,37 @@ def getAllEventsByTeacherAndIsDeleteFalse(teacherId, session, search, page):
     )
 
 
-def getAllEventsByStudentAndIsDeleteFalse(studentId, session, search, page):
+def getAllEventsByStudentAndIsDeleteFalse(studentId, session, search, page, from_date: date = None,
+                                          to_date: date = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    base_cond = [
+        Event.is_delete == False,
+        (Student.id == studentId) | (Event.class_id == None)
+    ]
+    if from_date:
+        base_cond.append(func.date(Event.start_time) >= from_date)
+    if to_date:
+        base_cond.append(func.date(Event.start_time) <= to_date)
+
+    current_class_query = (
+        select(StudentClassHistory)
+        .join(AcademicYear, onclause=(AcademicYear.id == StudentClassHistory.academic_year_id))
+        .where(
+            StudentClassHistory.student_id == studentId,
+            AcademicYear.start_date == from_date,
+            AcademicYear.is_delete == False,
+        )
+    )
+
+    current_class_detail: Optional[StudentClassHistory] = session.exec(current_class_query).first()
 
     # Count query
     count_query = (
         select(func.count(Event.id.distinct()))
         .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
-        .join(Student, onclause=(Class.id == Student.class_id))
-        .where(
-            Event.is_delete == False,
-            (Student.id == studentId) | (Event.class_id == None)
-        )
+        .join(Student, onclause=(Class.id == current_class_detail.class_id))
+        .where(*base_cond)
     )
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -225,11 +254,8 @@ def getAllEventsByStudentAndIsDeleteFalse(studentId, session, search, page):
     query = (
         select(Event)
         .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
-        .join(Student, onclause=(Class.id == Student.class_id))
-        .where(
-            Event.is_delete == False,
-            (Student.id == studentId) | (Event.class_id == None)
-        )
+        .join(Student, onclause=(Class.id == current_class_detail.class_id))
+        .where(*base_cond)
     )
     query = query.order_by(Event.start_time.desc())
     query = addSearchOption(query, search)
@@ -249,18 +275,35 @@ def getAllEventsByStudentAndIsDeleteFalse(studentId, session, search, page):
     )
 
 
-def getAllEventsByParentAndIsDeleteFalse(parentId, session, search, page):
+def getAllEventsByParentAndIsDeleteFalse(parentId, session, search, page, from_date: date = None, to_date: date = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    base_cond = [
+        Event.is_delete == False,
+        (Student.parent_id == parentId) | (Event.class_id == None)
+    ]
+    if from_date:
+        base_cond.append(func.date(Event.start_time) >= from_date)
+    if to_date:
+        base_cond.append(func.date(Event.start_time) <= to_date)
+
+    current_class_query = (
+        select(StudentClassHistory)
+        .join(AcademicYear, onclause=(AcademicYear.id == StudentClassHistory.academic_year_id))
+        .where(
+            AcademicYear.start_date == from_date,
+            AcademicYear.is_delete == False,
+        )
+    )
+
+    current_class_detail: Optional[StudentClassHistory] = session.exec(current_class_query).first()
 
     # Count query
     count_query = (
         select(func.count(Event.id.distinct()))
         .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
-        .join(Student, onclause=(Class.id == Student.class_id))
-        .where(
-            Event.is_delete == False,
-            (Student.parent_id == parentId) | (Event.class_id == None)
-        )
+        .join(Student, onclause=(Class.id == current_class_detail.class_id))
+        .where(*base_cond)
     )
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -269,11 +312,8 @@ def getAllEventsByParentAndIsDeleteFalse(parentId, session, search, page):
     query = (
         select(Event)
         .join(Class, onclause=(Class.id == Event.class_id), isouter=True)
-        .join(Student, onclause=(Class.id == Student.class_id))
-        .where(
-            Event.is_delete == False,
-            (Student.parent_id == parentId) | (Event.class_id == None)
-        )
+        .join(Student, onclause=(Class.id == current_class_detail.class_id))
+        .where(*base_cond)
     )
     query = query.order_by(Event.start_time.desc())
     query = addSearchOption(query, search)

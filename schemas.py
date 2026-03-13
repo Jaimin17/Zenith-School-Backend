@@ -6,7 +6,7 @@ from fastapi import Form
 from pydantic import EmailStr, BaseModel, field_validator, ConfigDict
 from sqlmodel import SQLModel, Field
 
-from models import UserSex, Day
+from models import UserSex, Day, StudentStatus
 
 
 class PaginatedBaseResponse(BaseModel):
@@ -144,6 +144,7 @@ class LessonBase(SQLModel):
     day: Day
     start_time: time
     end_time: time
+    academic_year_id: Optional[uuid.UUID] = None
     subject: Optional[SubjectBase] = None
     related_class: Optional[ClassBase] = None
 
@@ -170,6 +171,7 @@ class StudentBase(SQLModel):
     blood_type: str
     sex: UserSex
     dob: date
+    status: StudentStatus = StudentStatus.ACTIVE
 
 
 class TeacherBase(SQLModel):
@@ -415,6 +417,7 @@ class LessonSave(SQLModel):
     subject_id: uuid.UUID
     class_id: uuid.UUID
     teacher_id: uuid.UUID
+    academic_year_id: Optional[uuid.UUID] = None
 
 
 class LessonUpdate(LessonSave):
@@ -924,3 +927,126 @@ class JobApplicationDetail(JobApplicationRead):
 
 class PaginatedJobApplicationResponse(PaginatedBaseResponse):
     data: List[JobApplicationDetail]
+
+
+# ===================== Academic Year Schemas =====================
+
+class AcademicYearBase(SQLModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    year_label: str
+    start_date: date
+    end_date: date
+    is_active: bool
+    is_delete: bool
+    created_at: datetime
+
+
+class AcademicYearCreate(SQLModel):
+    year_label: str
+    start_date: date
+    end_date: date
+
+
+class AcademicYearUpdate(SQLModel):
+    year_label: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+
+class PaginatedAcademicYearResponse(PaginatedBaseResponse):
+    data: List[AcademicYearBase]
+
+
+class SeedStudentsResponse(SQLModel):
+    created: int
+    skipped: int
+
+
+# ===================== Student Class History Schemas =====================
+
+class StudentClassHistoryRead(SQLModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    student_id: uuid.UUID
+    academic_year_id: uuid.UUID
+    academic_year: Optional[AcademicYearBase] = None
+    class_id: Optional[uuid.UUID] = None
+    grade_id: Optional[uuid.UUID] = None
+    class_name: Optional[str] = None   # resolved by router from class_id
+    grade_level: Optional[int] = None  # resolved by router from grade_id
+    created_at: datetime
+
+
+class StudentHistoryResponse(SQLModel):
+    student_id: uuid.UUID
+    student_name: str
+    history: List[StudentClassHistoryRead]
+
+
+# ===================== Bulk Promote Schemas =====================
+
+class BulkPromoteRequest(SQLModel):
+    from_year_id: uuid.UUID
+    to_year_id: uuid.UUID
+    dry_run: bool = False  # If True, preview only – no DB writes
+
+
+class PromoteStudentResult(SQLModel):
+    student_id: uuid.UUID
+    student_name: str
+    action: str  # "promoted", "graduated", "skipped", "error"
+    from_grade_level: Optional[int] = None
+    to_grade_level: Optional[int] = None
+    class_assigned: Optional[str] = None   # class name if assigned
+    previous_class_name: str = None
+    class_not_found: bool = False           # True if section missing in next grade
+    detail: Optional[str] = None
+
+
+class BulkPromoteResponse(SQLModel):
+    dry_run: bool
+    from_year: str
+    to_year: str
+    promoted_count: int
+    graduated_count: int
+    skipped_count: int
+    class_not_found_count: int
+    error_count: int
+    total: int
+    results: List[PromoteStudentResult]
+
+
+# ===================== Assign Class Schemas =====================
+
+class AssignClassRequest(SQLModel):
+    class_id: uuid.UUID
+    academic_year_id: Optional[uuid.UUID] = None  # If None, updates current active year
+
+
+# ===================== Lightweight Children List (parent dropdown) =====================
+
+class ChildItem(SQLModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    first_name: str
+    last_name: str
+    username: str
+    img: Optional[str] = None
+    status: StudentStatus
+
+
+# ===================== Student Year Data Response =====================
+
+class StudentYearDataResponse(SQLModel):
+    academic_year: AcademicYearBase
+    class_id: Optional[uuid.UUID] = None
+    class_name: Optional[str] = None
+    grade_id: Optional[uuid.UUID] = None
+    grade_level: Optional[int] = None
+    attendance: List[StudentAttendanceRecord]
+    results: List[ResultRead]
+    lessons: List[LessonBase]

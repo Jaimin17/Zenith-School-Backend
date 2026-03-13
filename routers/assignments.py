@@ -1,10 +1,13 @@
 import uuid
 from datetime import timezone, date
 from typing import List, Union, Optional
+
+from sqlmodel import select
+
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 from deps import CurrentUser, AllUser, TeacherOrAdminUser
-from models import Assignment
+from models import Assignment, StudentClassHistory, AcademicYear
 from repository.assignments import getAllAssignmentsIsDeleteFalse, getAllAssignmentsOfTeacherIsDeleteFalse, \
     getAllAssignmentsOfClassIsDeleteFalse, getAllAssignmentsOfParentIsDeleteFalse, assignmentSaveWithPdf, \
     assignmentUpdate, \
@@ -27,7 +30,8 @@ def getAllAssignment(
         subject_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
-        due_date: Optional[str] = None
+        due_date: Optional[str] = None,
+        academic_year_id: Optional[uuid.UUID] = None
 ):
     user, role = current_user
 
@@ -37,19 +41,37 @@ def getAllAssignment(
 
     if role == "admin":
         all_assignments = getAllAssignmentsIsDeleteFalse(
-            session, search, page, subject_id, teacher_id, status, due_date
+            session, search, page, subject_id, teacher_id, status, due_date, academic_year_id
         )
     elif role == "teacher":
         all_assignments = getAllAssignmentsOfTeacherIsDeleteFalse(
-            user.id, session, search, page, subject_id, teacher_id, status, due_date
+            user.id, session, search, page, subject_id, teacher_id, status, due_date, academic_year_id
         )
     elif role == "student":
+        current_class_query = (
+            select(StudentClassHistory)
+            .join(AcademicYear, onclause=(AcademicYear.id == StudentClassHistory.academic_year_id))
+            .where(
+                StudentClassHistory.student_id == user.id,
+                AcademicYear.id == academic_year_id,
+                AcademicYear.is_delete == False,
+            )
+        )
+
+        current_class_detail: Optional[StudentClassHistory] = session.exec(current_class_query).first()
+
+        if current_class_detail:
+            class_id = current_class_detail.class_id
+        else:
+            class_id = user.class_id
+
         all_assignments = getAllAssignmentsOfClassIsDeleteFalse(
-            user.class_id, session, search, page, subject_id, teacher_id, status, due_date
+            class_id, session, search, page, subject_id, teacher_id, status, due_date,
+            academic_year_id
         )
     else:
         all_assignments = getAllAssignmentsOfParentIsDeleteFalse(
-            user.id, session, search, page, subject_id, teacher_id, status, due_date
+            user.id, session, search, page, subject_id, teacher_id, status, due_date, academic_year_id
         )
 
     return all_assignments

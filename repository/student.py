@@ -9,8 +9,8 @@ from sqlalchemy import func, Select
 from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
 from core.security import get_password_hash
-from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance, UserSex
-from schemas import StudentSave, StudentUpdateBase, PaginatedStudentResponse, updatePasswordModel
+from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance, UserSex, AcademicYear, StudentClassHistory, StudentStatus
+from schemas import StudentSave, StudentUpdateBase, PaginatedStudentResponse, updatePasswordModel, ChildItem, BulkPromoteResponse, PromoteStudentResult
 
 
 def addSearchOption(query: Select, search: str):
@@ -72,28 +72,48 @@ def countStudentBySexAll(session: Session):
     return {sex: count for sex, count in results}
 
 
-def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int):
+def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int, year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    count_query = (
-        select(func.count(Student.id.distinct()))
-        .where(Student.is_delete == False)
-    )
+    if year_id:
+        count_query = (
+            select(func.count(Student.id.distinct()))
+            .join(StudentClassHistory, onclause=(StudentClassHistory.student_id == Student.id))
+            .where(
+                Student.is_delete == False,
+                StudentClassHistory.academic_year_id == year_id,
+            )
+        )
+    else:
+        count_query = (
+            select(func.count(Student.id.distinct()))
+            .where(Student.is_delete == False)
+        )
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
-    query = (
-        select(Student)
-        .where(Student.is_delete == False)
-    )
+    if year_id:
+        query = (
+            select(Student)
+            .join(StudentClassHistory, onclause=(StudentClassHistory.student_id == Student.id))
+            .where(
+                Student.is_delete == False,
+                StudentClassHistory.academic_year_id == year_id,
+            )
+        )
+    else:
+        query = (
+            select(Student)
+            .where(Student.is_delete == False)
+        )
 
     query = query.order_by(func.lower(Student.username))
 
     query = addSearchOption(query, search)
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
-    active_students = session.exec(query).all()
+    active_students = session.exec(query).unique().all()
 
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
 
@@ -107,49 +127,62 @@ def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int):
     )
 
 
-def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UUID, search: str, page: int):
+def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UUID, search: str, page: int, year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    count_query = (
-        select(func.count(Student.id.distinct()))
-        .join(
-            Class,
-            onclause=(Class.id == Student.class_id)
+    if year_id:
+        count_query = (
+            select(func.count(Student.id.distinct()))
+            .join(StudentClassHistory, onclause=(StudentClassHistory.student_id == Student.id))
+            .join(Lesson, onclause=(Lesson.class_id == StudentClassHistory.class_id))
+            .where(
+                Student.is_delete == False,
+                StudentClassHistory.academic_year_id == year_id,
+                Lesson.teacher_id == teacherId,
+                Lesson.is_delete == False,
+            )
         )
-        .join(
-            Lesson,
-            onclause=(Lesson.class_id == Class.id)
+    else:
+        count_query = (
+            select(func.count(Student.id.distinct()))
+            .join(Class, onclause=(Class.id == Student.class_id))
+            .join(Lesson, onclause=(Lesson.class_id == Class.id))
+            .where(
+                Student.is_delete == False,
+                Lesson.teacher_id == teacherId,
+            )
         )
-        .where(
-            Student.is_delete == False,
-            Lesson.teacher_id == teacherId,
-        )
-    )
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
-    query = (
-        select(Student)
-        .join(
-            Class,
-            onclause=(Class.id == Student.class_id)
+    if year_id:
+        query = (
+            select(Student)
+            .join(StudentClassHistory, onclause=(StudentClassHistory.student_id == Student.id))
+            .join(Lesson, onclause=(Lesson.class_id == StudentClassHistory.class_id))
+            .where(
+                Student.is_delete == False,
+                StudentClassHistory.academic_year_id == year_id,
+                Lesson.teacher_id == teacherId,
+                Lesson.is_delete == False,
+            )
+            .distinct()
         )
-        .join(
-            Lesson,
-            onclause=(Lesson.class_id == Class.id)
+    else:
+        query = (
+            select(Student)
+            .join(Class, onclause=(Class.id == Student.class_id))
+            .join(Lesson, onclause=(Lesson.class_id == Class.id))
+            .where(
+                Lesson.teacher_id == teacherId,
+                Student.is_delete == False,
+            )
+            .distinct()
         )
-        .where(
-            Lesson.teacher_id == teacherId,
-            Student.is_delete == False,
-        )
-        .distinct()
-    )
 
     query = query.order_by(Student.username)
-
     query = addSearchOption(query, search)
-
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     results = session.exec(query).all()
 
@@ -165,33 +198,54 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
     )
 
 
-def getAllStudentsOfParentAndIsDeleteFalse(session: Session, parentId: uuid.UUID, search: str, page: int):
+def getAllStudentsOfParentAndIsDeleteFalse(session: Session, parentId: uuid.UUID, search: str, page: int, year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    count_query = (
-        select(func.count(Student.id.distinct()))
-        .where(
-            Student.parent_id == parentId,
-            Student.is_delete == False,
+    if year_id:
+        count_query = (
+            select(func.count(Student.id.distinct()))
+            .join(StudentClassHistory, onclause=(StudentClassHistory.student_id == Student.id))
+            .where(
+                Student.parent_id == parentId,
+                Student.is_delete == False,
+                StudentClassHistory.academic_year_id == year_id,
+            )
         )
-    )
+    else:
+        count_query = (
+            select(func.count(Student.id.distinct()))
+            .where(
+                Student.parent_id == parentId,
+                Student.is_delete == False,
+            )
+        )
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
-    query = (
-        select(Student)
-        .where(
-            Student.parent_id == parentId,
-            Student.is_delete == False,
+    if year_id:
+        query = (
+            select(Student)
+            .join(StudentClassHistory, onclause=(StudentClassHistory.student_id == Student.id))
+            .where(
+                Student.parent_id == parentId,
+                Student.is_delete == False,
+                StudentClassHistory.academic_year_id == year_id,
+            )
+            .distinct()
         )
-        .distinct()
-    )
+    else:
+        query = (
+            select(Student)
+            .where(
+                Student.parent_id == parentId,
+                Student.is_delete == False,
+            )
+            .distinct()
+        )
 
     query = query.order_by(Student.username)
-
     query = addSearchOption(query, search)
-
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     results = session.exec(query).all()
 
@@ -325,6 +379,23 @@ async def studentSaveWithImage(student_data: dict, img: Optional[UploadFile], se
 
     try:
         session.flush()  # ensure new_subject.id is generated
+
+        # Auto-create StudentClassHistory entry for the active academic year
+        active_year = session.exec(
+            select(AcademicYear).where(
+                AcademicYear.is_active == True,
+                AcademicYear.is_delete == False,
+            )
+        ).first()
+        if active_year:
+            history = StudentClassHistory(
+                student_id=new_student.id,
+                academic_year_id=active_year.id,
+                class_id=new_student.class_id,
+                grade_id=new_student.grade_id,
+            )
+            session.add(history)
+
         session.commit()
     except IntegrityError as e:
         session.rollback()
@@ -586,3 +657,325 @@ def studentSoftDelete(id: uuid.UUID, session: Session):
         "attendance_affected": attendance_count,
         "result_affected": result_count
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Lightweight children list for parent dropdown
+# ─────────────────────────────────────────────────────────────────────────────
+
+def getChildrenOfParentLightweight(parent_id: uuid.UUID, session: Session) -> List[ChildItem]:
+    """Return minimal student info for the child-selector dropdown (no pagination)."""
+    students = session.exec(
+        select(Student).where(
+            Student.parent_id == parent_id,
+            Student.is_delete == False,
+        ).order_by(Student.first_name)
+    ).all()
+    return [
+        ChildItem(
+            id=s.id,
+            first_name=s.first_name,
+            last_name=s.last_name,
+            username=s.username,
+            img=s.img,
+            status=s.status,
+        )
+        for s in students
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bulk student promotion
+# ─────────────────────────────────────────────────────────────────────────────
+
+def bulkPromoteStudents(
+    from_year_id: uuid.UUID,
+    to_year_id: uuid.UUID,
+    dry_run: bool,
+    session: Session,
+) -> BulkPromoteResponse:
+    # ── validate years ──
+    from_year = session.exec(
+        select(AcademicYear).where(AcademicYear.id == from_year_id, AcademicYear.is_delete == False)
+    ).first()
+    if not from_year:
+        raise HTTPException(status_code=404, detail="Source academic year not found.")
+
+    to_year = session.exec(
+        select(AcademicYear).where(AcademicYear.id == to_year_id, AcademicYear.is_delete == False)
+    ).first()
+    if not to_year:
+        raise HTTPException(status_code=404, detail="Target academic year not found.")
+
+    # ── chronological check: from_year must start before to_year ──
+    if from_year.start_date >= to_year.start_date:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Source year '{from_year.year_label}' must start before the target year "
+                f"'{to_year.year_label}'. Check year start dates."
+            ),
+        )
+
+    # ── fetch all StudentClassHistory records for from_year ──
+    from_year_histories = session.exec(
+        select(StudentClassHistory).where(
+            StudentClassHistory.academic_year_id == from_year_id,
+        )
+    ).all()
+
+    if not from_year_histories:
+        return BulkPromoteResponse(
+            dry_run=dry_run,
+            from_year=from_year.year_label,
+            to_year=to_year.year_label,
+            promoted_count=0,
+            graduated_count=0,
+            skipped_count=0,
+            class_not_found_count=0,
+            error_count=0,
+            total=0,
+            results=[],
+        )
+
+    # Pre-fetch max grade level to detect final grade dynamically
+    max_level_row = session.exec(
+        select(func.max(Grade.level)).where(Grade.is_delete == False)
+    ).first()
+    max_level: int = max_level_row if max_level_row is not None else 0
+
+    # Pre-fetch all grades and classes (avoid N+1)
+    all_grades = {g.level: g for g in session.exec(select(Grade).where(Grade.is_delete == False)).all()}
+    all_classes = session.exec(select(Class).where(Class.is_delete == False)).all()
+    # Map (grade_id, section) -> Class for fast lookup
+    class_by_grade_section: dict = {}
+    for cls in all_classes:
+        if cls.grade_id and "-" in cls.name:
+            section = cls.name.split("-", 1)[-1].strip()
+            class_by_grade_section[(cls.grade_id, section)] = cls
+
+    results: List[PromoteStudentResult] = []
+    promoted_count = graduated_count = skipped_count = class_not_found_count = error_count = 0
+
+    for history in from_year_histories:
+        student_id = history.student_id
+        student = session.get(Student, student_id)
+        if not student or student.is_delete:
+            continue  # skip deleted students silently
+
+        try:
+            # ── idempotency: skip if student already has a to_year history record ──
+            existing_to_year = session.exec(
+                select(StudentClassHistory).where(
+                    StudentClassHistory.student_id == student_id,
+                    StudentClassHistory.academic_year_id == to_year_id,
+                )
+            ).first()
+            if existing_to_year:
+                skipped_count += 1
+                results.append(PromoteStudentResult(
+                    student_id=student.id,
+                    student_name=f"{student.first_name} {student.last_name}",
+                    action="skipped",
+                    detail="Already enrolled in the target academic year.",
+                ))
+                continue
+
+            # ── use the from_year history's grade_id (snapshot of grade in from_year) ──
+            current_level = None
+            if history.grade_id:
+                grade_obj = session.get(Grade, history.grade_id)
+                current_level = grade_obj.level if grade_obj else None
+
+            # ── previous class name from from_year history ──
+            previous_class_name = None
+            if history.class_id:
+                prev_class = session.get(Class, history.class_id)
+                previous_class_name = prev_class.name if prev_class else None
+
+            # ── determine next grade ──
+            if current_level is None or current_level >= max_level:
+                # Final grade → graduate
+                if not dry_run:
+                    history_record = StudentClassHistory(
+                        student_id=student_id,
+                        academic_year_id=to_year_id,
+                        class_id=None,
+                        grade_id=None,
+                    )
+                    session.add(history_record)
+                    if to_year.is_active:
+                        student.status = StudentStatus.GRADUATED
+                        student.class_id = None
+                        session.add(student)
+                graduated_count += 1
+                results.append(PromoteStudentResult(
+                    student_id=student.id,
+                    student_name=f"{student.first_name} {student.last_name}",
+                    action="graduated",
+                    from_grade_level=current_level,
+                    previous_class_name=previous_class_name,
+                ))
+                continue
+
+            next_level = current_level + 1
+            next_grade = all_grades.get(next_level)
+            if not next_grade:
+                # Gap in grade levels — treat as graduated
+                if not dry_run:
+                    history_record = StudentClassHistory(
+                        student_id=student_id,
+                        academic_year_id=to_year_id,
+                        class_id=None,
+                        grade_id=None,
+                    )
+                    session.add(history_record)
+                    if to_year.is_active:
+                        student.status = StudentStatus.GRADUATED
+                        student.class_id = None
+                        session.add(student)
+                graduated_count += 1
+                results.append(PromoteStudentResult(
+                    student_id=student.id,
+                    student_name=f"{student.first_name} {student.last_name}",
+                    action="graduated",
+                    from_grade_level=current_level,
+                    previous_class_name=previous_class_name,
+                    detail=f"No grade {next_level} exists — treated as graduated.",
+                ))
+                continue
+
+            # ── section-matching: try to assign same section in next grade ──
+            next_class = None
+            assigned_class_name = None
+            section_missing = False
+
+            if history.class_id:
+                current_class = session.get(Class, history.class_id)
+                if current_class and "-" in current_class.name:
+                    section = current_class.name.split("-", 1)[-1].strip()
+                    next_class = class_by_grade_section.get((next_grade.id, section))
+                    if next_class:
+                        assigned_class_name = next_class.name
+                    else:
+                        section_missing = True
+
+            if not dry_run:
+                # Create to_year history record
+                history_record = StudentClassHistory(
+                    student_id=student_id,
+                    academic_year_id=to_year_id,
+                    class_id=next_class.id if next_class else None,
+                    grade_id=next_grade.id,
+                )
+                session.add(history_record)
+                # Update student's live state only if to_year is the active year
+                if to_year.is_active:
+                    student.grade_id = next_grade.id
+                    student.class_id = next_class.id if next_class else None
+                    session.add(student)
+
+            if section_missing:
+                class_not_found_count += 1
+
+            promoted_count += 1
+            results.append(PromoteStudentResult(
+                student_id=student.id,
+                student_name=f"{student.first_name} {student.last_name}",
+                action="promoted",
+                from_grade_level=current_level,
+                to_grade_level=next_level,
+                previous_class_name=previous_class_name,
+                class_assigned=assigned_class_name,
+                class_not_found=section_missing,
+                detail="Section not found in next grade — class set to unassigned." if section_missing else None,
+            ))
+
+        except Exception as exc:
+            error_count += 1
+            results.append(PromoteStudentResult(
+                student_id=student.id,
+                student_name=f"{student.first_name} {student.last_name}",
+                action="error",
+                detail=str(exc),
+            ))
+
+    if not dry_run:
+        try:
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            raise HTTPException(status_code=500, detail=f"Commit failed: {str(exc)}")
+
+    total = promoted_count + graduated_count + skipped_count + error_count
+    return BulkPromoteResponse(
+        dry_run=dry_run,
+        from_year=from_year.year_label,
+        to_year=to_year.year_label,
+        promoted_count=promoted_count,
+        graduated_count=graduated_count,
+        skipped_count=skipped_count,
+        class_not_found_count=class_not_found_count,
+        error_count=error_count,
+        total=total,
+        results=results,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Manual class assignment override
+# ─────────────────────────────────────────────────────────────────────────────
+
+def assignClassToStudent(
+    student_id: uuid.UUID,
+    class_id: uuid.UUID,
+    academic_year_id: Optional[uuid.UUID],
+    session: Session,
+) -> dict:
+    student = session.exec(
+        select(Student).where(Student.id == student_id, Student.is_delete == False)
+    ).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found.")
+
+    new_class = session.exec(
+        select(Class).where(Class.id == class_id, Class.is_delete == False)
+    ).first()
+    if not new_class:
+        raise HTTPException(status_code=404, detail="Class not found.")
+
+    # Determine the year to update history for
+    year_id = academic_year_id
+    if not year_id:
+        active_year = session.exec(
+            select(AcademicYear).where(
+                AcademicYear.is_active == True,
+                AcademicYear.is_delete == False,
+            )
+        ).first()
+        if active_year:
+            year_id = active_year.id
+
+    # Update student current class
+    student.class_id = class_id
+    session.add(student)
+
+    # Update corresponding history record if it exists
+    if year_id:
+        history = session.exec(
+            select(StudentClassHistory).where(
+                StudentClassHistory.student_id == student_id,
+                StudentClassHistory.academic_year_id == year_id,
+            )
+        ).first()
+        if history:
+            history.class_id = class_id
+            session.add(history)
+
+    try:
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to assign class: {str(exc)}")
+
+    return {"id": str(student_id), "message": f"Class '{new_class.name}' assigned successfully."}

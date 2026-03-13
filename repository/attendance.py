@@ -1279,3 +1279,42 @@ def checkAttendanceExists(
         "absent_count": absent_count,
         "not_marked_count": total_students - marked_count
     }
+
+
+# ===================== Historical Data (by Date Range) =====================
+
+def getStudentAttendanceByDateRange(
+    student_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    session: Session,
+) -> list[StudentAttendanceRecord]:
+    """
+    Return all attendance records for a student within a date range.
+    Used for viewing historical year data.
+    """
+    query = (
+        select(Attendance, Lesson, Subject)
+        .outerjoin(Lesson, Attendance.lesson_id == Lesson.id)
+        .outerjoin(Subject, Lesson.subject_id == Subject.id)
+        .where(
+            Attendance.student_id == student_id,
+            Attendance.is_delete == False,
+            func.date(Attendance.attendance_date) >= start_date,
+            func.date(Attendance.attendance_date) <= end_date,
+        )
+        .order_by(Attendance.attendance_date.desc())
+    )
+    rows = session.exec(query).all()
+
+    records = []
+    for att, lesson, subject in rows:
+        records.append(StudentAttendanceRecord(
+            id=att.id,
+            date=att.attendance_date.date() if hasattr(att.attendance_date, 'date') else att.attendance_date,
+            present=att.present,
+            lesson_id=att.lesson_id or att.id,
+            lesson_name=lesson.name if lesson else "Unknown",
+            subject_name=subject.name if subject else None,
+        ))
+    return records

@@ -1,12 +1,14 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi.params import Form
+from sqlmodel import select
 
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
 from deps import CurrentUser, AllUser, TeacherOrAdminUser
+from models import StudentClassHistory, AcademicYear
 from repository.exams import getAllExamsIsDeleteFalse, getAllExamsOfTeacherIsDeleteFalse, \
     getAllExamsOfClassIsDeleteFalse, getAllExamsOfParentIsDeleteFalse, examSave, examUpdate, examSoftDelete, \
     getAllExamsOfStudentIsDeleteFalse, getFullListOfExamsOfClassIsDeleteFalse
@@ -18,16 +20,36 @@ router = APIRouter(
 
 
 @router.get("/getAll", response_model=PaginatedExamResponse)
-def getAllExam(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllExam(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1,
+               academic_year_id: Optional[uuid.UUID] = None):
     user, role = current_user
     if role == "admin":
-        all_exams = getAllExamsIsDeleteFalse(session, search, page)
+        all_exams = getAllExamsIsDeleteFalse(session, search, page, academic_year_id)
     elif role == "teacher":
-        all_exams = getAllExamsOfTeacherIsDeleteFalse(user.id, session, search, page)
+        all_exams = getAllExamsOfTeacherIsDeleteFalse(user.id, session, search, page, academic_year_id)
     elif role == "student":
-        all_exams = getAllExamsOfClassIsDeleteFalse(user.class_id, session, search, page)
+
+        current_class_query = (
+            select(StudentClassHistory)
+            .join(AcademicYear, onclause=(AcademicYear.id == StudentClassHistory.academic_year_id))
+            .where(
+                StudentClassHistory.student_id == user.id,
+                AcademicYear.id == academic_year_id,
+                AcademicYear.is_delete == False,
+            )
+        )
+
+        current_class_detail: Optional[StudentClassHistory] = session.exec(current_class_query).first()
+
+        if current_class_detail:
+            class_id = current_class_detail.class_id
+        else:
+            class_id = user.class_id
+
+        all_exams = getAllExamsOfClassIsDeleteFalse(class_id, session, search, page,
+                                                    academic_year_id)
     else:
-        all_exams = getAllExamsOfParentIsDeleteFalse(user.id, session, search, page)
+        all_exams = getAllExamsOfParentIsDeleteFalse(user.id, session, search, page, academic_year_id)
     return all_exams
 
 

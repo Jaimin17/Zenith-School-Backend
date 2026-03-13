@@ -31,6 +31,7 @@ def apply_assignment_filters(
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
         due_date: Optional[str] = None,
+        academic_year_id: Optional[uuid.UUID] = None,
         lesson_already_joined: bool = False
 ):
     """
@@ -42,13 +43,14 @@ def apply_assignment_filters(
         teacher_id: Filter by teacher UUID
         status: Filter by status (active, upcoming, overdue)
         due_date: Filter by due date (YYYY-MM-DD format)
+        academic_year_id: Filter by academic year UUID (via Lesson)
         lesson_already_joined: Set to True if Lesson table is already joined in the base query
     """
 
     # Track if we need to join Lesson for filters
-    need_lesson_join = (subject_id or teacher_id) and not lesson_already_joined
+    need_lesson_join = (subject_id or teacher_id or academic_year_id) and not lesson_already_joined
 
-    # Join Lesson once if needed for subject or teacher filters
+    # Join Lesson once if needed for subject, teacher, or academic year filters
     if need_lesson_join:
         query = query.join(Lesson, onclause=(Assignment.lesson_id == Lesson.id), isouter=False)
 
@@ -68,6 +70,10 @@ def apply_assignment_filters(
             query = query.where(Lesson.teacher_id == teacher_uuid)
         except ValueError:
             pass  # Invalid UUID, skip filter
+
+    # Filter by academic year
+    if academic_year_id:
+        query = query.where(Lesson.academic_year_id == academic_year_id)
 
     # Filter by status (active, upcoming, overdue)
     if status:
@@ -103,7 +109,8 @@ def getAllAssignmentsIsDeleteFalse(
         subject_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
-        due_date: Optional[str] = None
+        due_date: Optional[str] = None,
+        academic_year_id: Optional[uuid.UUID] = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
@@ -116,7 +123,7 @@ def getAllAssignmentsIsDeleteFalse(
     count_query = addSearchOption(count_query, search)
     # Lesson is NOT already joined, so pass False
     count_query = apply_assignment_filters(
-        count_query, subject_id, teacher_id, status, due_date, lesson_already_joined=False
+        count_query, subject_id, teacher_id, status, due_date, academic_year_id, lesson_already_joined=False
     )
     total_count = session.exec(count_query).one()
 
@@ -129,7 +136,7 @@ def getAllAssignmentsIsDeleteFalse(
     query = addSearchOption(query, search)
     # Lesson is NOT already joined, so pass False
     query = apply_assignment_filters(
-        query, subject_id, teacher_id, status, due_date, lesson_already_joined=False
+        query, subject_id, teacher_id, status, due_date, academic_year_id, lesson_already_joined=False
     )
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_assignments = session.exec(query).unique().all()
@@ -172,18 +179,20 @@ def getAllAssignmentsOfTeacherIsDeleteFalse(
         subject_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
-        due_date: Optional[str] = None
+        due_date: Optional[str] = None,
+        academic_year_id: Optional[uuid.UUID] = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    year_cond = [Lesson.teacher_id == teacherId, Assignment.is_delete == False]
+    if academic_year_id:
+        year_cond.append(Lesson.academic_year_id == academic_year_id)
 
     # Count query - Lesson is already joined
     count_query = (
         select(func.count(Assignment.id.distinct()))
         .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
-        .where(
-            Lesson.teacher_id == teacherId,
-            Assignment.is_delete == False
-        )
+        .where(*year_cond)
     )
 
     count_query = addSearchOption(count_query, search)
@@ -197,10 +206,7 @@ def getAllAssignmentsOfTeacherIsDeleteFalse(
     query = (
         select(Assignment)
         .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
-        .where(
-            Lesson.teacher_id == teacherId,
-            Assignment.is_delete == False,
-        )
+        .where(*year_cond)
     )
 
     query = addSearchOption(query, search)
@@ -231,9 +237,14 @@ def getAllAssignmentsOfParentIsDeleteFalse(
         subject_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
-        due_date: Optional[str] = None
+        due_date: Optional[str] = None,
+        academic_year_id: Optional[uuid.UUID] = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Student.parent_id == parentId, Assignment.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     # Count query - Lesson is already joined
     count_query = (
@@ -241,10 +252,7 @@ def getAllAssignmentsOfParentIsDeleteFalse(
         .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
         .join(Class, onclause=(Class.id == Lesson.class_id))
         .join(Student, onclause=(Student.class_id == Class.id))
-        .where(
-            Student.parent_id == parentId,
-            Assignment.is_delete == False
-        )
+        .where(*where_cond)
     )
 
     count_query = addSearchOption(count_query, search)
@@ -260,10 +268,7 @@ def getAllAssignmentsOfParentIsDeleteFalse(
         .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
         .join(Class, onclause=(Class.id == Lesson.class_id))
         .join(Student, onclause=(Student.class_id == Class.id))
-        .where(
-            Student.parent_id == parentId,
-            Assignment.is_delete == False,
-        )
+        .where(*where_cond)
     )
 
     query = addSearchOption(query, search)
@@ -294,18 +299,20 @@ def getAllAssignmentsOfClassIsDeleteFalse(
         subject_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
-        due_date: Optional[str] = None
+        due_date: Optional[str] = None,
+        academic_year_id: Optional[uuid.UUID] = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Lesson.class_id == classId, Assignment.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     # Count query - Lesson is already joined
     count_query = (
         select(func.count(Assignment.id.distinct()))
         .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
-        .where(
-            Lesson.class_id == classId,
-            Assignment.is_delete == False
-        )
+        .where(*where_cond)
     )
 
     count_query = addSearchOption(count_query, search)
@@ -319,10 +326,7 @@ def getAllAssignmentsOfClassIsDeleteFalse(
     query = (
         select(Assignment)
         .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
-        .where(
-            Lesson.class_id == classId,
-            Assignment.is_delete == False,
-        )
+        .where(*where_cond)
     )
 
     query = addSearchOption(query, search)
@@ -367,20 +371,21 @@ def getAllAssignmentsOfStudentIsDeleteFalse(
         subject_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
-        due_date: Optional[str] = None
+        due_date: Optional[str] = None,
+        academic_year_id: Optional[uuid.UUID] = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
+
+    where_cond = [Student.id == studentId, Student.is_delete == False, Assignment.is_delete == False]
+    if academic_year_id:
+        where_cond.append(Lesson.academic_year_id == academic_year_id)
 
     # Count query - Lesson is already joined
     count_query = (
         select(func.count(Assignment.id.distinct()))
         .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
         .join(Student, onclause=(Student.class_id == Lesson.class_id))
-        .where(
-            Student.id == studentId,
-            Student.is_delete == False,
-            Assignment.is_delete == False
-        )
+        .where(*where_cond)
     )
 
     count_query = addSearchOption(count_query, search)
@@ -395,11 +400,7 @@ def getAllAssignmentsOfStudentIsDeleteFalse(
         select(Assignment)
         .join(Lesson, onclause=(Assignment.lesson_id == Lesson.id))
         .join(Student, onclause=(Student.class_id == Lesson.class_id))
-        .where(
-            Student.id == studentId,
-            Student.is_delete == False,
-            Assignment.is_delete == False
-        )
+        .where(*where_cond)
     )
 
     query = addSearchOption(query, search)

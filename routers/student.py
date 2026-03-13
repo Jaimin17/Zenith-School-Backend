@@ -6,15 +6,20 @@ from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 
 from core.config import settings
 from deps import CurrentUser, StudentOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser, ParentOrTeacherOrAdminUser, \
-    UserRole
+    UserRole, ParentUser
 from core.database import SessionDep
 from models import UserSex
 from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, StudentDeleteResponse, \
-    PaginatedStudentResponse, updatePasswordModel
+    PaginatedStudentResponse, updatePasswordModel, ChildItem, BulkPromoteRequest, BulkPromoteResponse, \
+    AssignClassRequest, StudentYearDataResponse, StudentHistoryResponse
 from repository.student import getAllStudentsIsDeleteFalse, getAllStudentsOfTeacherAndIsDeleteFalse, countStudent, \
     countStudentBySexAll, getStudentByIdAndIsDeleteFalse, StudentUpdate, studentSoftDelete, \
     studentSaveWithImage, getAllStudentsOfParentAndIsDeleteFalse, getAllStudentsOfClassAndIsDeleteFalse, \
-    updateStudentPassword
+    updateStudentPassword, getChildrenOfParentLightweight, bulkPromoteStudents, assignClassToStudent
+from repository.academicYear import getAcademicYearById, getActiveAcademicYear
+from repository.studentClassHistory import getStudentFullHistory, getHistoricalLessons
+from repository.attendance import getStudentAttendanceByDateRange
+from repository.results import getStudentResultsByDateRange
 
 router = APIRouter(
     prefix="/student",
@@ -40,15 +45,21 @@ def getStudentById(studentId: uuid.UUID, current_user: StudentOrTeacherOrAdminUs
 
 
 @router.get("/getAll", response_model=PaginatedStudentResponse)
-def getAllStudents(current_user: ParentOrTeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllStudents(
+    current_user: ParentOrTeacherOrAdminUser,
+    session: SessionDep,
+    search: str = None,
+    page: int = 1,
+    year_id: Optional[uuid.UUID] = None,
+):
     user, role = current_user
 
     if role == "admin":
-        all_students = getAllStudentsIsDeleteFalse(session, search, page)
+        all_students = getAllStudentsIsDeleteFalse(session, search, page, year_id)
     elif role == "teacher":
-        all_students = getAllStudentsOfTeacherAndIsDeleteFalse(session, user.id, search, page)
+        all_students = getAllStudentsOfTeacherAndIsDeleteFalse(session, user.id, search, page, year_id)
     else:
-        all_students = getAllStudentsOfParentAndIsDeleteFalse(session, user.id, search, page)
+        all_students = getAllStudentsOfParentAndIsDeleteFalse(session, user.id, search, page, year_id)
     return all_students
 
 
@@ -409,3 +420,175 @@ async def updateStudent(
 def softDeleteStudent(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
     result = studentSoftDelete(id, session)
     return result
+
+
+# ===================== Parent: Lightweight Children List =====================
+
+@router.get("/children", response_model=List[ChildItem])
+def getChildren(current_user: ParentUser, session: SessionDep):
+    """
+    Parent only: Returns lightweight list of all children for the child-selector dropdown.
+    Includes graduated children so parents can still access historical data.
+    """
+    parent, _ = current_user
+    return getChildrenOfParentLightweight(parent.id, session)
+
+
+# ===================== Admin: Bulk Promotion =====================
+
+@router.post("/bulk-promote", response_model=BulkPromoteResponse)
+def bulkPromote(data: BulkPromoteRequest, current_user: AdminUser, session: SessionDep):
+    """
+    Admin: Promote all active students to the next grade.
+    - Snapshots current class/grade into StudentClassHistory for 'from_year'.
+    - Assigns section-matching class in next grade (e.g. 9-A → 10-A) if it exists.
+    - Marks students in the final grade as 'graduated'.
+    - Set dry_run=true to preview without writing to the database.
+    """
+    return bulkPromoteStudents(data.from_year_id, data.to_year_id, data.dry_run, session)
+
+
+# ===================== Admin: Manual Class Override =====================
+
+@router.patch("/{student_id}/assign-class", response_model=SaveResponse)
+def assignClass(
+    student_id: uuid.UUID,
+    data: AssignClassRequest,
+    current_user: AdminUser,
+    session: SessionDep,
+):
+    """
+    Admin: Manually assign a student to a specific class.
+    Updates both the student record and the StudentClassHistory entry for the given year.
+    Defaults to the active academic year if academic_year_id is not supplied.
+    """
+    return assignClassToStudent(student_id, data.class_id, data.academic_year_id, session)
+
+
+# ===================== Student Self: Year Data =====================
+
+@router.get("/self/year-data/{academic_year_id}", response_model=StudentYearDataResponse)
+def getMyYearData(
+    academic_year_id: uuid.UUID,
+    current_user: StudentOrAdminUser,
+    session: SessionDep,
+):
+    """
+    Student self-service: Return year data (attendance, results, lessons) for the authenticated student.
+    """
+    from models import Class, Grade
+    from sqlmodel import select as _select
+    user, role = current_user
+    if role != "student":
+        raise HTTPException(status_code=403, detail="Only students can access this endpoint.")
+    student_id = user.id
+
+    year = getAcademicYearById(academic_year_id, session)
+    if not year:
+        raise HTTPException(status_code=404, detail="Academic year not found.")
+
+    attendance = getStudentAttendanceByDateRange(
+        student_id, year.start_date, year.end_date, session
+    )
+    results = getStudentResultsByDateRange(
+        student_id, year.start_date, year.end_date, session
+    )
+    lessons = getHistoricalLessons(student_id, academic_year_id, session)
+
+    from repository.studentClassHistory import getStudentClassHistoryByYear
+    from schemas import ClassBase, GradeBase, LessonBase, AcademicYearBase
+    history = getStudentClassHistoryByYear(student_id, academic_year_id, session)
+    class_id = history.class_id if history else None
+    grade_id = history.grade_id if history else None
+    class_name = None
+    grade_level = None
+    if class_id:
+        cls = session.get(Class, class_id)
+        class_name = cls.name if cls else None
+    if grade_id:
+        grd = session.get(Grade, grade_id)
+        grade_level = grd.level if grd else None
+
+    return StudentYearDataResponse(
+        academic_year=AcademicYearBase.model_validate(year),
+        class_id=class_id,
+        class_name=class_name,
+        grade_id=grade_id,
+        grade_level=grade_level,
+        attendance=attendance,
+        results=results,
+        lessons=[LessonBase.model_validate(l) for l in lessons],
+    )
+
+
+# ===================== Historical Year Data Endpoint =====================
+
+@router.get("/{student_id}/year-data/{academic_year_id}", response_model=StudentYearDataResponse)
+def getStudentYearData(
+    student_id: uuid.UUID,
+    academic_year_id: uuid.UUID,
+    current_user: StudentOrTeacherOrAdminUser,  # parents checked separately below
+    session: SessionDep,
+):
+    """
+    Return attendance, results, and lessons for a student in a specific academic year.
+    Used by the historical year selector on the parent/student dashboard.
+    """
+    from models import Class, Grade
+    from sqlmodel import select as _select
+
+    year = getAcademicYearById(academic_year_id, session)
+    if not year:
+        raise HTTPException(status_code=404, detail="Academic year not found.")
+
+    attendance = getStudentAttendanceByDateRange(
+        student_id, year.start_date, year.end_date, session
+    )
+    results = getStudentResultsByDateRange(
+        student_id, year.start_date, year.end_date, session
+    )
+    lessons = getHistoricalLessons(student_id, academic_year_id, session)
+
+    # Resolve class/grade info from StudentClassHistory
+    from repository.studentClassHistory import getStudentClassHistoryByYear
+    from schemas import ClassBase, GradeBase, LessonBase
+    history = getStudentClassHistoryByYear(student_id, academic_year_id, session)
+    class_id = history.class_id if history else None
+    grade_id = history.grade_id if history else None
+    class_name = None
+    grade_level = None
+    if class_id:
+        cls = session.get(Class, class_id)
+        class_name = cls.name if cls else None
+    if grade_id:
+        grd = session.get(Grade, grade_id)
+        grade_level = grd.level if grd else None
+
+    from schemas import AcademicYearBase
+    return StudentYearDataResponse(
+        academic_year=AcademicYearBase.model_validate(year),
+        class_id=class_id,
+        class_name=class_name,
+        grade_id=grade_id,
+        grade_level=grade_level,
+        attendance=attendance,
+        results=results,
+        lessons=[LessonBase.model_validate(l) for l in lessons],
+    )
+
+
+# ===================== Student Class History =====================
+
+@router.get("/{student_id}/history", response_model=StudentHistoryResponse)
+def getClassHistory(student_id: uuid.UUID, current_user: AdminUser, session: SessionDep):
+    """Admin: Get full class/grade progression history for a student."""
+    from repository.student import getStudentByIdAndIsDeleteFalse
+    student = getStudentByIdAndIsDeleteFalse(student_id, session)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found.")
+    history = getStudentFullHistory(student_id, session)
+    return StudentHistoryResponse(
+        student_id=student_id,
+        student_name=f"{student.first_name} {student.last_name}",
+        history=history,
+    )

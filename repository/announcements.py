@@ -6,11 +6,11 @@ from fastapi import HTTPException, UploadFile
 from psycopg import IntegrityError
 from sqlalchemy import Select, func
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, select
+from sqlmodel import Session, select, and_, or_
 
 from core.FileStorage import process_and_save_pdf, cleanup_pdf
 from core.config import settings
-from models import Announcement, Class, Student
+from models import Announcement, Class, Student, StudentClassHistory, AcademicYear
 from schemas import AnnouncementSave, AnnouncementUpdate, PaginatedAnnouncementResponse
 
 
@@ -29,7 +29,13 @@ def addSearchOption(query: Select, search: str):
     return query
 
 
-def getAllAnnouncementsIsDeleteFalse(session: Session, search: str, page: int):
+def getAllAnnouncementsIsDeleteFalse(
+        session: Session,
+        search: str,
+        page: int,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     # Base query for counting
@@ -38,6 +44,10 @@ def getAllAnnouncementsIsDeleteFalse(session: Session, search: str, page: int):
         .where(Announcement.is_delete == False)
     )
     count_query = addSearchOption(count_query, search)
+    if from_date:
+        count_query = count_query.where(Announcement.announcement_date >= from_date)
+    if to_date:
+        count_query = count_query.where(Announcement.announcement_date <= to_date)
     total_count = session.exec(count_query).one()
 
     # Main query for data
@@ -47,6 +57,10 @@ def getAllAnnouncementsIsDeleteFalse(session: Session, search: str, page: int):
     )
     query = query.order_by(Announcement.announcement_date.desc())
     query = addSearchOption(query, search)
+    if from_date:
+        query = query.where(Announcement.announcement_date >= from_date)
+    if to_date:
+        query = query.where(Announcement.announcement_date <= to_date)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     announcements = session.exec(query).unique().all()
 
@@ -80,7 +94,14 @@ def getAnnouncementById(session: Session, announcementId: uuid.UUID):
     return announcement_detail
 
 
-def getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, search, page):
+def getAllAnnouncementsByTeacherAndIsDeleteFalse(
+        teacherId: uuid.UUID,
+        session: Session,
+        search: str = None,
+        page: int = 1,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     # Base query for counting
@@ -92,6 +113,12 @@ def getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, search, pag
             (Class.supervisor_id == teacherId) | (Announcement.class_id == None)
         )
     )
+
+    if from_date:
+        count_query = count_query.where(Announcement.announcement_date >= from_date)
+    if to_date:
+        count_query = count_query.where(Announcement.announcement_date <= to_date)
+
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
@@ -104,6 +131,12 @@ def getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, search, pag
             (Class.supervisor_id == teacherId) | (Announcement.class_id == None)
         )
     )
+
+    if from_date:
+        query = query.where(Announcement.announcement_date >= from_date)
+    if to_date:
+        query = query.where(Announcement.announcement_date <= to_date)
+
     query = query.order_by(Announcement.announcement_date.desc())
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
@@ -122,38 +155,61 @@ def getAllAnnouncementsByTeacherAndIsDeleteFalse(teacherId, session, search, pag
     )
 
 
-def getAllAnnouncementsByStudentAndIsDeleteFalse(studentId, session, search, page):
+def getAllAnnouncementsByStudentAndIsDeleteFalse(
+        studentId: uuid.UUID,
+        session: Session,
+        search: str = None,
+        page: int = 1,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    # Base query for counting
-    count_query = (
-        select(func.count(Announcement.id.distinct()))
-        .join(Class, onclause=(Class.id == Announcement.class_id), isouter=True)
-        .join(Student, onclause=(Class.id == Student.class_id))
+    current_class_query = (
+        select(StudentClassHistory)
+        .join(AcademicYear, onclause=(AcademicYear.id == StudentClassHistory.academic_year_id))
         .where(
-            Announcement.is_delete == False,
-            (Student.id == studentId) | (Announcement.class_id == None)
+            StudentClassHistory.student_id == studentId,
+            AcademicYear.start_date == from_date,
+            AcademicYear.is_delete == False,
         )
     )
+
+    current_class_detail: Optional[StudentClassHistory] = session.exec(current_class_query).first()
+
+    # Base condition: general announcements (no class) OR announcements for student's class
+    base_where = and_(
+        Announcement.is_delete == False,
+        or_(
+            Announcement.class_id == None,  # general announcements for everyone
+            Announcement.class_id == current_class_detail.class_id
+        )
+    )
+
+    # Count query
+    count_query = select(func.count(Announcement.id.distinct())).where(base_where)
+
+    if from_date:
+        count_query = count_query.where(Announcement.announcement_date >= from_date)
+    if to_date:
+        count_query = count_query.where(Announcement.announcement_date <= to_date)
+
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
-    # Main query for data
-    query = (
-        select(Announcement)
-        .join(Class, onclause=(Class.id == Announcement.class_id), isouter=True)
-        .join(Student, onclause=(Class.id == Student.class_id))
-        .where(
-            Announcement.is_delete == False,
-            (Student.id == studentId) | (Announcement.class_id == None)
-        )
-    )
-    query = query.order_by(Announcement.announcement_date.desc())
+    # Main query
+    query = select(Announcement).where(base_where)
+
+    if from_date:
+        query = query.where(Announcement.announcement_date >= from_date)
+    if to_date:
+        query = query.where(Announcement.announcement_date <= to_date)
+
     query = addSearchOption(query, search)
+    query = query.order_by(Announcement.announcement_date.desc())
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     announcements = session.exec(query).unique().all()
 
-    # Calculate pagination metadata
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
 
     return PaginatedAnnouncementResponse(
@@ -166,7 +222,14 @@ def getAllAnnouncementsByStudentAndIsDeleteFalse(studentId, session, search, pag
     )
 
 
-def getAllAnnouncementsByParentAndIsDeleteFalse(parentId, session, search, page):
+def getAllAnnouncementsByParentAndIsDeleteFalse(
+        parentId: uuid.UUID,
+        session: Session,
+        search: str = None,
+        page: int = 1,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     # Base query for counting
@@ -179,6 +242,12 @@ def getAllAnnouncementsByParentAndIsDeleteFalse(parentId, session, search, page)
             (Student.parent_id == parentId) | (Announcement.class_id == None)
         )
     )
+
+    if from_date:
+        count_query = count_query.where(Announcement.announcement_date >= from_date)
+    if to_date:
+        count_query = count_query.where(Announcement.announcement_date <= to_date)
+
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
@@ -192,6 +261,12 @@ def getAllAnnouncementsByParentAndIsDeleteFalse(parentId, session, search, page)
             (Student.parent_id == parentId) | (Announcement.class_id == None)
         )
     )
+
+    if from_date:
+        query = query.where(Announcement.announcement_date >= from_date)
+    if to_date:
+        query = query.where(Announcement.announcement_date <= to_date)
+
     query = query.order_by(Announcement.announcement_date.desc())
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)

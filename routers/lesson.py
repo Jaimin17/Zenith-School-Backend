@@ -12,7 +12,7 @@ from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIs
     countAllLessonOfStudent, lessonSave, lessonUpdate, lessonSoftDelete, getLessonById, \
     getAllLessonOfCurrentWeekIsDeleteFalse, getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse, \
     getAllLessonOfClassOfCurrentWeekIsDeleteFalse, getAllLessonOfStudentOfCurrentWeekIsDeleteFalse, \
-    getAllLessonList
+    getAllLessonList, getAllLessonsOfTeacherByYear, getAllLessonsOfClassByYear, getAllLessonsByYear
 from schemas import LessonRead, SaveResponse, LessonSave, LessonUpdate, LessonDeleteResponse, PaginatedLessonResponse
 from datetime import datetime
 
@@ -165,16 +165,17 @@ def validate_lesson_data(
 
 
 @router.get("/getAll", response_model=PaginatedLessonResponse)
-def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1,
+                academic_year_id: Optional[uuid.UUID] = None):
     user, role = current_user
     if role == "admin":
-        all_lessons = getAllLessonIsDeleteFalse(session, search, page)
+        all_lessons = getAllLessonIsDeleteFalse(session, search, page, academic_year_id)
     elif role == "teacher":
-        all_lessons = getAllLessonOfTeacherIsDeleteFalse(user.id, session, search, page)
+        all_lessons = getAllLessonOfTeacherIsDeleteFalse(user.id, session, search, page, academic_year_id=academic_year_id)
     elif role == "student":
-        all_lessons = getAllLessonOfClassIsDeleteFalse(user.class_id, session, search, page)
+        all_lessons = getAllLessonOfClassIsDeleteFalse(user.class_id, session, search, page, academic_year_id)
     else:
-        all_lessons = getAllLessonOfParentIsDeleteFalse(user.id, session, search, page)
+        all_lessons = getAllLessonOfParentIsDeleteFalse(user.id, session, search, page, academic_year_id)
     return all_lessons
 
 @router.get("/getFullList", response_model=List[LessonRead])
@@ -313,6 +314,32 @@ def getAllLessonOfClass(classId: uuid.UUID, current_user: CurrentUser, session: 
                         page: int = 1):
     all_lessons = getAllLessonOfClassIsDeleteFalse(classId, session, search, page)
     return all_lessons
+
+
+@router.get("/getAllByYear", response_model=List[LessonRead])
+def getAllLessonsByAcademicYear(
+    academic_year_id: uuid.UUID,
+    current_user: StudentOrTeacherOrAdminUser,
+    session: SessionDep,
+):
+    """Return all lessons for a given academic year, filtered by the caller's role."""
+    from models import StudentClassHistory
+    from sqlmodel import select as _select
+    user, role = current_user
+    if role == "admin":
+        return getAllLessonsByYear(academic_year_id, session)
+    elif role == "teacher":
+        return getAllLessonsOfTeacherByYear(user.id, academic_year_id, session)
+    else:  # student
+        history = session.exec(
+            _select(StudentClassHistory).where(
+                StudentClassHistory.student_id == user.id,
+                StudentClassHistory.academic_year_id == academic_year_id,
+            )
+        ).first()
+        if not history or not history.class_id:
+            return []
+        return getAllLessonsOfClassByYear(history.class_id, academic_year_id, session)
 
 
 @router.post("/save", response_model=SaveResponse)

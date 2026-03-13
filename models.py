@@ -4,7 +4,7 @@ import uuid
 from typing import Optional, List, TYPE_CHECKING
 
 from pydantic import EmailStr
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, Enum as SAEnum
 from sqlmodel import SQLModel, Field, Relationship
 
 if TYPE_CHECKING:
@@ -64,6 +64,12 @@ class ApplicationStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class StudentStatus(str, Enum):
+    ACTIVE = "active"
+    GRADUATED = "graduated"
+    INACTIVE = "inactive"
+
+
 # ===================== Parent =====================
 class Parent(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -88,6 +94,22 @@ class Grade(SQLModel, table=True):
 
     students: List["Student"] = Relationship(back_populates="grade")
     classes: List["Class"] = Relationship(back_populates="grade")
+
+
+# ===================== AcademicYear =====================
+class AcademicYear(SQLModel, table=True):
+    __tablename__ = "academic_year"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    year_label: str = Field(nullable=False, unique=True)  # e.g. "2025-2026"
+    start_date: date = Field(nullable=False)
+    end_date: date = Field(nullable=False)
+    is_active: bool = Field(default=False, nullable=False)
+    is_delete: bool = Field(default=False, nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+
+    class_histories: List["StudentClassHistory"] = Relationship(back_populates="academic_year")
+    lessons: List["Lesson"] = Relationship(back_populates="academic_year")
 
 
 # ===================== Association Tables =====================
@@ -194,6 +216,14 @@ class Student(SQLModel, table=True):
     password: str = Field(nullable=False)
     created_at: datetime = Field(default_factory=datetime.now, nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
+    status: StudentStatus = Field(
+        default=StudentStatus.ACTIVE,
+        sa_column=Column(
+            SAEnum(StudentStatus, values_callable=lambda x: [e.value for e in x], name="studentstatus"),
+            nullable=False,
+            default=StudentStatus.ACTIVE,
+        )
+    )
 
     parent_id: Optional[uuid.UUID] = Field(default=None, foreign_key="parent.id")
     parent: Optional["Parent"] = Relationship(back_populates="students")
@@ -207,6 +237,25 @@ class Student(SQLModel, table=True):
     attendances: List["Attendance"] = Relationship(back_populates="student")
     results: List["Result"] = Relationship(back_populates="student")
     testimonials: Optional["Testimonials"] = Relationship(back_populates="student")
+    class_histories: List["StudentClassHistory"] = Relationship(back_populates="student")
+
+
+# ===================== StudentClassHistory =====================
+class StudentClassHistory(SQLModel, table=True):
+    __tablename__ = "student_class_history"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+
+    student_id: uuid.UUID = Field(nullable=False, foreign_key="student.id")
+    student: "Student" = Relationship(back_populates="class_histories")
+
+    academic_year_id: uuid.UUID = Field(nullable=False, foreign_key="academic_year.id")
+    academic_year: "AcademicYear" = Relationship(back_populates="class_histories")
+
+    # Snapshot of the class/grade the student was in for this year (nullable = unassigned)
+    class_id: Optional[uuid.UUID] = Field(default=None, foreign_key="class.id")
+    grade_id: Optional[uuid.UUID] = Field(default=None, foreign_key="grade.id")
 
 
 # ===================== Lesson =====================
@@ -226,6 +275,9 @@ class Lesson(SQLModel, table=True):
 
     teacher_id: Optional[uuid.UUID] = Field(default=None, foreign_key="teacher.id")
     teacher: Optional["Teacher"] = Relationship(back_populates="lessons")
+
+    academic_year_id: Optional[uuid.UUID] = Field(default=None, foreign_key="academic_year.id")
+    academic_year: Optional["AcademicYear"] = Relationship(back_populates="lessons")
 
     exams: List["Exam"] = Relationship(back_populates="lesson")
     assignments: List["Assignment"] = Relationship(back_populates="lesson")

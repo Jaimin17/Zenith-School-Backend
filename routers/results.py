@@ -25,17 +25,18 @@ def getAllResults(
         class_id: str = None,  # New
         exam_id: str = None,  # New
         assignment_id: str = None,  # New
-        type: str = None  # "exam" or "assignment"  # New
+        type: str = None,  # "exam" or "assignment"  # New
+        academic_year_id: Optional[uuid.UUID] = None
 ):
     user, role = current_user
     if role == "admin":
-        all_results = getAllResultsIsDeleteFalse(session, search, page, class_id, exam_id, assignment_id, type)
+        all_results = getAllResultsIsDeleteFalse(session, search, page, class_id, exam_id, assignment_id, type, academic_year_id)
     elif role == "teacher":
         all_results = getAllResultsByTeacherIsDeleteFalse(user.id, session, search, page, class_id, exam_id,
-                                                          assignment_id, type)
+                                                          assignment_id, type, academic_year_id)
     elif role == "student":
         all_results = getAllResultsOfStudentIsDeleteFalse(user.id, session, search, page, class_id, exam_id,
-                                                          assignment_id, type)
+                                                          assignment_id, type, academic_year_id)
     elif role == "parent":
         all_results = getAllResultsOfParentIsDeleteFalse(user.id, session, search, page, class_id, exam_id,
                                                          assignment_id, type)

@@ -3,10 +3,12 @@ from datetime import datetime, date, timezone
 from typing import List, Optional, Union
 
 from fastapi.params import Form
+from sqlalchemy import select
 
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from deps import CurrentUser, AllUser, AdminUser
+from models import StudentClassHistory
 from repository.events import getAllEventsIsDeleteFalse, getAllEventsByTeacherAndIsDeleteFalse, \
     getAllEventsByStudentAndIsDeleteFalse, getAllEventsByParentAndIsDeleteFalse, getAllEventsByDate, eventSave, \
     eventUpdate, EventSoftDelete, getEventById, getAllPublicEventsAndIsDeleteFalse
@@ -18,16 +20,17 @@ router = APIRouter(
 
 
 @router.get("/getAll", response_model=PaginatedEventResponse)
-def getAllEvents(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllEvents(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1,
+                 from_date: Optional[date] = None, to_date: Optional[date] = None):
     user, role = current_user
     if role == "admin":
-        all_events = getAllEventsIsDeleteFalse(session, search, page)
+        all_events = getAllEventsIsDeleteFalse(session, search, page, from_date, to_date)
     elif role == "teacher":
-        all_events = getAllEventsByTeacherAndIsDeleteFalse(user.id, session, search, page)
+        all_events = getAllEventsByTeacherAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
     elif role == "student":
-        all_events = getAllEventsByStudentAndIsDeleteFalse(user.id, session, search, page)
+        all_events = getAllEventsByStudentAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
     else:
-        all_events = getAllEventsByParentAndIsDeleteFalse(user.id, session, search, page)
+        all_events = getAllEventsByParentAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
     return all_events
 
 
@@ -84,8 +87,17 @@ def getById(eventId: uuid.UUID, current_user: AllUser, session: SessionDep):
                 detail="Event class data is missing."
             )
 
-        class_students = [s.id for s in event_detail.related_class.students if not s.is_delete]
-        if user.id not in class_students:
+        check_student_permission_query = (
+            select(StudentClassHistory)
+            .where(
+                StudentClassHistory.class_id == event_detail.class_id,
+                StudentClassHistory.student_id == user.id
+            )
+        )
+
+        check_student_permission = session.exec(check_student_permission_query).first()
+
+        if not check_student_permission:
             raise HTTPException(
                 status_code=403,
                 detail="You do not have permission to access this event."
