@@ -362,7 +362,8 @@ def getAllResultsOfParentIsDeleteFalse(
         class_id: str = None,
         exam_id: str = None,
         assignment_id: str = None,
-        result_type: str = None
+        result_type: str = None,
+        academic_year_id: uuid.UUID = None
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
@@ -387,6 +388,9 @@ def getAllResultsOfParentIsDeleteFalse(
 
     if class_id:
         where_conditions.append(Lesson.class_id == class_id)
+
+    if academic_year_id:
+        where_conditions.append(Lesson.academic_year_id == academic_year_id)
 
     # COUNT QUERY
     count_query = (

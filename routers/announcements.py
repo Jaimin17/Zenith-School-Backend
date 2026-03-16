@@ -1,10 +1,13 @@
 import uuid
 from datetime import date
 from typing import List, Union, Optional
+
+from sqlmodel import select
+
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 from deps import CurrentUser, AllUser, AdminUser, TeacherOrAdminUser
-from models import Announcement
+from models import Announcement, Student
 from repository.announcements import getAllAnnouncementsIsDeleteFalse, getAllAnnouncementsByTeacherAndIsDeleteFalse, \
     getAllAnnouncementsByStudentAndIsDeleteFalse, getAllAnnouncementsByParentAndIsDeleteFalse, announcementSave, \
     announcementUpdate, AnnouncementSoftDelete, getAnnouncementById
@@ -19,6 +22,7 @@ router = APIRouter(
 def getAllAnnouncements(
         current_user: AllUser,
         session: SessionDep,
+        student_id: Optional[uuid.UUID] = None,
         search: str = None,
         page: int = 1,
         from_date: Optional[date] = None,
@@ -29,10 +33,37 @@ def getAllAnnouncements(
         announcements = getAllAnnouncementsIsDeleteFalse(session, search, page, from_date, to_date)
     elif role == "teacher":
         announcements = getAllAnnouncementsByTeacherAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
-    elif role == "student":
-        announcements = getAllAnnouncementsByStudentAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
+    # elif role == "student":
+    #     announcements = getAllAnnouncementsByStudentAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
+    # else:
+    #     announcements = getAllAnnouncementsByParentAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
     else:
-        announcements = getAllAnnouncementsByParentAndIsDeleteFalse(user.id, session, search, page, from_date, to_date)
+        if role == "parent":
+            if not student_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Student Id is mandatory, provide correct student ID."
+                )
+
+            check_student_permission_query = (
+                select(Student)
+                .where(
+                    Student.id == student_id,
+                    Student.parent_id == user.id,
+                    Student.is_delete == False
+                )
+            )
+
+            check_student_permission = session.exec(check_student_permission_query).first()
+            if not check_student_permission:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have permission to access this Announcement."
+                )
+
+        announcements = getAllAnnouncementsByStudentAndIsDeleteFalse(student_id, session, search, page, from_date,
+                                                                     to_date)
+
     return announcements
 
 

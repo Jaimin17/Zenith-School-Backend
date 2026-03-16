@@ -202,10 +202,11 @@ def getAllAssignmentOfStudent(
         subject_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
-        due_date: Optional[str] = None
+        due_date: Optional[str] = None,
+        academic_year_id: Optional[uuid.UUID] = None
 ):
     all_exams = getAllAssignmentsOfStudentIsDeleteFalse(studentId, session, search, page, subject_id, teacher_id,
-                                                        status, due_date)
+                                                        status, due_date, academic_year_id)
     return all_exams
 
 

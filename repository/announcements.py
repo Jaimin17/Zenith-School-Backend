@@ -239,7 +239,10 @@ def getAllAnnouncementsByParentAndIsDeleteFalse(
         .join(Student, onclause=(Class.id == Student.class_id))
         .where(
             Announcement.is_delete == False,
-            (Student.parent_id == parentId) | (Announcement.class_id == None)
+            or_(
+                Announcement.class_id == None,  # general announcements for everyone
+                Student.parent_id == parentId
+            )
         )
     )
 

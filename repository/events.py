@@ -221,7 +221,10 @@ def getAllEventsByStudentAndIsDeleteFalse(studentId, session, search, page, from
 
     base_cond = [
         Event.is_delete == False,
-        (Student.id == studentId) | (Event.class_id == None)
+        or_(
+            Student.id == studentId,
+            Event.class_id == None
+        )
     ]
     if from_date:
         base_cond.append(func.date(Event.start_time) >= from_date)

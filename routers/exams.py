@@ -74,9 +74,10 @@ def getFullListOfExamsOfClass(classId: uuid.UUID, current_user: CurrentUser, ses
 
 
 @router.get("/student/{studentId}", response_model=PaginatedExamResponse)
-def getAllExamsOfStudent(studentId: uuid.UUID, current_user: AllUser, session: SessionDep, search: str = None,
+def getAllExamsOfStudent(studentId: uuid.UUID, academic_year_id: Optional[uuid.UUID], current_user: AllUser,
+                         session: SessionDep, search: str = None,
                          page: int = 1):
-    all_exams = getAllExamsOfStudentIsDeleteFalse(studentId, session, search, page)
+    all_exams = getAllExamsOfStudentIsDeleteFalse(studentId, session, search, page, academic_year_id)
     return all_exams
 
 
