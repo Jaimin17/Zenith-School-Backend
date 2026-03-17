@@ -18,7 +18,7 @@ from repository.student import getAllStudentsIsDeleteFalse, getAllStudentsOfTeac
     updateStudentPassword, getChildrenOfParentLightweight, bulkPromoteStudents, assignClassToStudent
 from repository.academicYear import getAcademicYearById, getActiveAcademicYear
 from repository.studentClassHistory import getStudentFullHistory, getHistoricalLessons
-from repository.attendance import getStudentAttendanceByDateRange
+from repository.attendance import getStudentAttendanceByDateRange, getStudentYearAttendanceSummary
 from repository.results import getStudentResultsByDateRange
 
 router = APIRouter(
@@ -490,6 +490,9 @@ def getMyYearData(
     attendance = getStudentAttendanceByDateRange(
         student_id, year.start_date, year.end_date, session
     )
+    attendance_summary = getStudentYearAttendanceSummary(
+        student_id, year.start_date, year.end_date, session
+    )
     results = getStudentResultsByDateRange(
         student_id, year.start_date, year.end_date, session
     )
@@ -516,6 +519,7 @@ def getMyYearData(
         grade_id=grade_id,
         grade_level=grade_level,
         attendance=attendance,
+        attendance_summary=attendance_summary,
         results=results,
         lessons=[LessonBase.model_validate(l) for l in lessons],
     )
@@ -542,6 +546,9 @@ def getStudentYearData(
         raise HTTPException(status_code=404, detail="Academic year not found.")
 
     attendance = getStudentAttendanceByDateRange(
+        student_id, year.start_date, year.end_date, session
+    )
+    attendance_summary = getStudentYearAttendanceSummary(
         student_id, year.start_date, year.end_date, session
     )
     results = getStudentResultsByDateRange(
@@ -572,6 +579,7 @@ def getStudentYearData(
         grade_id=grade_id,
         grade_level=grade_level,
         attendance=attendance,
+        attendance_summary=attendance_summary,
         results=results,
         lessons=[LessonBase.model_validate(l) for l in lessons],
     )

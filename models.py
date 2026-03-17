@@ -198,6 +198,7 @@ class Class(SQLModel, table=True):
 
     events: List["Event"] = Relationship(back_populates="related_class")
     announcements: List["Announcement"] = Relationship(back_populates="related_class")
+    attendances: List["Attendance"] = Relationship(back_populates="related_class")
 
 
 # ===================== Student =====================
@@ -281,7 +282,6 @@ class Lesson(SQLModel, table=True):
 
     exams: List["Exam"] = Relationship(back_populates="lesson")
     assignments: List["Assignment"] = Relationship(back_populates="lesson")
-    attendances: List["Attendance"] = Relationship(back_populates="lesson")
 
 
 # ===================== Exam / Assignment =====================
@@ -338,8 +338,14 @@ class Attendance(SQLModel, table=True):
     student_id: Optional[uuid.UUID] = Field(default=None, foreign_key="student.id")
     student: Optional["Student"] = Relationship(back_populates="attendances")
 
-    lesson_id: Optional[uuid.UUID] = Field(default=None, foreign_key="lesson.id")
-    lesson: Optional["Lesson"] = Relationship(back_populates="attendances")
+    class_id: Optional[uuid.UUID] = Field(default=None, foreign_key="class.id")
+    related_class: Optional["Class"] = Relationship(back_populates="attendances")
+
+class Holiday(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    date: datetime = Field(nullable=False, unique=True)
+    name: str = Field(nullable=False)
+    description: Optional[str] = Field(default=None)
 
 
 class BlacklistToken(SQLModel, table=True):

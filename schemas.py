@@ -553,7 +553,7 @@ class ParentUpdate(ParentSave):
 
 class AttendanceRead(AttendanceBase):
     student: Optional[StudentBase] = None
-    lesson: Optional[LessonBase] = None
+    related_class: Optional["ClassBase"] = None
 
 
 class AttendanceRecord(SQLModel):
@@ -562,7 +562,7 @@ class AttendanceRecord(SQLModel):
 
 
 class AttendanceBulkSave(SQLModel):
-    lesson_id: uuid.UUID
+    class_id: uuid.UUID
     attendance_date: date
     attendances: List[AttendanceRecord]
 
@@ -574,7 +574,7 @@ class AttendanceBulkSave(SQLModel):
 
 
 class AttendanceSave(AttendanceRecord):
-    lesson_id: uuid.UUID
+    class_id: uuid.UUID
     attendance_date: date
 
 
@@ -598,8 +598,8 @@ class AttendanceDetail(SQLModel):
     id: uuid.UUID
     student_id: uuid.UUID
     student_name: str
-    lesson_id: uuid.UUID
-    lesson_name: str
+    class_id: uuid.UUID
+    class_name: str
     attendance_date: date
     present: bool
     is_delete: bool
@@ -661,8 +661,8 @@ class StudentAttendanceRecord(SQLModel):
     id: uuid.UUID
     date: date
     present: bool
-    lesson_id: uuid.UUID
-    lesson_name: str
+    class_id: uuid.UUID
+    class_name: str
     subject_name: Optional[str] = None
 
 
@@ -726,10 +726,10 @@ class TeacherClassSummary(SQLModel):
     """Class summary for teacher's view"""
     class_id: uuid.UUID
     class_name: str
-    lesson_id: uuid.UUID
-    lesson_name: str
+    lesson_id: Optional[uuid.UUID] = None
+    lesson_name: Optional[str] = None
     subject_name: Optional[str] = None
-    day: str
+    day: Optional[str] = None
     total_students: int
     attendance_marked: bool
     present_count: int
@@ -749,13 +749,10 @@ class StudentRosterItem(SQLModel):
     present: Optional[bool] = None  # None = not marked, True/False = marked
 
 
-class LessonRosterResponse(SQLModel):
-    """Response for getting lesson roster for taking attendance"""
-    lesson_id: uuid.UUID
-    lesson_name: str
+class ClassRosterResponse(SQLModel):
+    """Response for getting class roster for taking attendance"""
     class_id: uuid.UUID
     class_name: str
-    subject_name: Optional[str] = None
     target_date: date
     total_students: int
     attendance_exists: bool  # True if attendance already taken for this date
@@ -763,36 +760,29 @@ class LessonRosterResponse(SQLModel):
     students: List[StudentRosterItem]
 
 
-class LessonForDateItem(SQLModel):
-    """Lesson item for a specific date (used in LessonSelector)"""
-    lesson_id: uuid.UUID
-    lesson_name: str
+class ClassForDateItem(SQLModel):
+    """Class item for a specific date (used in ClassSelector)"""
     class_id: uuid.UUID
     class_name: str
-    subject_id: Optional[uuid.UUID] = None
-    subject_name: Optional[str] = None
     teacher_id: Optional[uuid.UUID] = None
     teacher_name: Optional[str] = None
-    start_time: time
-    end_time: time
-    day: str
     attendance_status: str  # "not_taken", "partial", "complete"
     students_count: int
     present_count: int
     absent_count: int
 
 
-class LessonsForDateResponse(SQLModel):
-    """Response for getting lessons for a specific date"""
+class ClassesForDateResponse(SQLModel):
+    """Response for getting classes for a specific date"""
     date: date
     day_of_week: str
-    total_lessons: int
-    lessons: List[LessonForDateItem]
+    total_classes: int
+    classes: List[ClassForDateItem]
 
 
 class AttendanceTakeRequest(SQLModel):
     """Request body for taking/updating attendance in bulk"""
-    lesson_id: uuid.UUID
+    class_id: uuid.UUID
     attendance_date: date
     records: List[AttendanceRecord]
     overwrite_existing: bool = False  # If True, update existing records; if False, reject if exists
@@ -807,7 +797,7 @@ class AttendanceTakeRequest(SQLModel):
 class AttendanceTakeResponse(SQLModel):
     """Response for taking attendance"""
     message: str
-    lesson_id: uuid.UUID
+    class_id: uuid.UUID
     attendance_date: date
     total_students: int
     created_count: int
@@ -1041,6 +1031,14 @@ class ChildItem(SQLModel):
 
 # ===================== Student Year Data Response =====================
 
+class StudentYearAttendanceSummary(SQLModel):
+    total_working_days: int
+    working_days_left: int
+    public_holiday_count: int
+    present_days: int
+    absent_days: int
+    attendance_percentage: float
+
 class StudentYearDataResponse(SQLModel):
     academic_year: AcademicYearBase
     class_id: Optional[uuid.UUID] = None
@@ -1048,5 +1046,30 @@ class StudentYearDataResponse(SQLModel):
     grade_id: Optional[uuid.UUID] = None
     grade_level: Optional[int] = None
     attendance: List[StudentAttendanceRecord]
+    attendance_summary: StudentYearAttendanceSummary
     results: List[ResultRead]
     lessons: List[LessonBase]
+
+# ===================== Holiday Schemas =====================
+class HolidayBase(SQLModel):
+    date: date
+    name: str
+    description: Optional[str] = None
+
+
+class HolidayCreate(HolidayBase):
+    pass
+
+
+class HolidayRead(SQLModel):
+    id: uuid.UUID
+    date: date
+    name: str
+    description: Optional[str] = None
+
+
+class HolidayUpdate(SQLModel):
+    id: uuid.UUID
+    date: Optional[date] = None
+    name: Optional[str] = None
+    description: Optional[str] = None

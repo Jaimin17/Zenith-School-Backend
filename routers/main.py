@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from routers import (authentication, user, teacher, student, parent, subject, classes, lesson, exams,
                      assignments, results, events, announcements, admin, attendance, grade, banner,
-                     photoGallery, testimonials, achievements, sportsPrograms, academicYears)
+photoGallery, testimonials, achievements, sportsPrograms, academicYears, holiday)
 from routers import jobOpenings, jobApplications
 
 from chatbot.router import router
@@ -21,6 +21,7 @@ api_router.include_router(classes.router, tags=["classes"])
 api_router.include_router(events.router, tags=["events"])
 api_router.include_router(exams.router, tags=["exams"])
 api_router.include_router(grade.router, tags=["grade"])
+api_router.include_router(holiday.router, prefix="/holiday", tags=["holiday"])
 api_router.include_router(jobOpenings.router, tags=["jobOpenings"])
 api_router.include_router(jobApplications.router, tags=["jobApplications"])
 api_router.include_router(lesson.router, tags=["lesson"])
