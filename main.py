@@ -14,6 +14,7 @@ from core.database import init_db
 from core.security import delete_old_blacklisted_tokens
 from routers.main import api_router
 import os
+import chromadb
 
 if os.getenv("RUN_MAIN") == "true":
     scheduler.start()
@@ -92,3 +93,16 @@ if settings.UPLOAD_DIR_PDF.exists():
     print(f"✓ Static files mounted at /uploads/pdfs")
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# CHROMA_PATH = "./chroma_db"
+#
+# client = chromadb.PersistentClient(path=CHROMA_PATH)
+#
+# collection = client.get_or_create_collection(name="school_docs")
+#
+# results = collection.get()
+#
+# for doc, meta in zip(results["documents"], results["metadatas"]):
+#     print("TEXT:", doc)
+#     print("META:", meta)
+#     print("-" * 50)

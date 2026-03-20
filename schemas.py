@@ -627,6 +627,8 @@ class UsersCount(SQLModel):
 class AttendanceDashboardSummary(SQLModel):
     """Admin dashboard summary for a specific date"""
     date: date
+    is_holiday: bool = False
+    holiday_reason: Optional[str] = None
     total_classes: int
     classes_with_attendance: int
     pending_classes: int
@@ -736,6 +738,15 @@ class TeacherClassSummary(SQLModel):
     absent_count: int
 
 
+class TeacherClassesAttendanceResponse(SQLModel):
+    """Teacher classes attendance response for a specific date"""
+    date: date
+    teacher_id: uuid.UUID
+    is_holiday: bool = False
+    holiday_reason: Optional[str] = None
+    classes: List[TeacherClassSummary]
+
+
 # ===================== Take Attendance Workflow Schemas =====================
 
 class StudentRosterItem(SQLModel):
@@ -776,6 +787,8 @@ class ClassesForDateResponse(SQLModel):
     """Response for getting classes for a specific date"""
     date: date
     day_of_week: str
+    is_holiday: bool = False
+    holiday_reason: Optional[str] = None
     total_classes: int
     classes: List[ClassForDateItem]
 

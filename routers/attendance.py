@@ -50,6 +50,7 @@ from schemas import (
     ClasswiseAttendanceResponse,
     StudentMonthlyAttendance,
     TeacherClassSummary,
+    TeacherClassesAttendanceResponse,
 )
 
 router = APIRouter(prefix="/attendance")
@@ -83,16 +84,14 @@ def getClassAttendance(
     return getClassAttendanceDetail(class_id, target_date or date.today(), session)
 
 
-@router.get("/teacher/classes", response_model=List[TeacherClassSummary])
+@router.get("/teacher/classes", response_model=TeacherClassesAttendanceResponse)
 def getTeacherClassesSummary(
     current_user: TeacherOrAdminUser,
     session: SessionDep,
     target_date: Optional[date] = Query(None, description="Date for attendance status (defaults to today)"),
 ):
     user, role = current_user
-    if role == "teacher":
-        return getTeacherClasses(user.id, target_date or date.today(), session)
-    return []
+    return getTeacherClasses(user.id, target_date or date.today(), session)
 
 
 @router.get("/take/classes", response_model=ClassesForDateResponse)

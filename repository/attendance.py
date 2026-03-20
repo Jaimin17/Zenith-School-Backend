@@ -30,6 +30,7 @@ from schemas import (
     StudentMonthlyAttendance,
     StudentRosterItem,
     TeacherClassSummary,
+    TeacherClassesAttendanceResponse,
 )
 
 
@@ -201,6 +202,8 @@ def getDashboardSummary(target_date: date, session: Session) -> AttendanceDashbo
     if reason:
         return AttendanceDashboardSummary(
             date=target_date,
+            is_holiday=True,
+            holiday_reason=reason,
             total_classes=int(total_classes),
             classes_with_attendance=0,
             pending_classes=0,
@@ -238,6 +241,8 @@ def getDashboardSummary(target_date: date, session: Session) -> AttendanceDashbo
 
     return AttendanceDashboardSummary(
         date=target_date,
+        is_holiday=False,
+        holiday_reason=None,
         total_classes=int(total_classes),
         classes_with_attendance=int(classes_with_attendance),
         pending_classes=int(pending_classes),
@@ -481,27 +486,31 @@ def getCalendarHeatmap(student_id: uuid.UUID, year: int, month: int, session: Se
     )
 
 
-def getTeacherClasses(teacher_id: uuid.UUID, target_date: date, session: Session) -> list[TeacherClassSummary]:
+def getTeacherClasses(teacher_id: uuid.UUID, target_date: date, session: Session) -> TeacherClassesAttendanceResponse:
     classes = session.exec(
         select(Class).where(Class.supervisor_id == teacher_id, Class.is_delete == False).order_by(Class.name)
     ).all()
 
     reason = _holiday_reason(target_date, session)
+    if reason:
+        return TeacherClassesAttendanceResponse(
+            date=target_date,
+            teacher_id=teacher_id,
+            is_holiday=True,
+            holiday_reason=reason,
+            classes=[],
+        )
+
     summaries = []
     for cls in classes:
         total_students = session.exec(
             select(func.count(Student.id)).where(Student.class_id == cls.id, Student.is_delete == False)
         ).first() or 0
 
-        present_count = 0
-        absent_count = 0
-        attendance_marked = False
-
-        if not reason:
-            _, rows = _ensure_daily_attendance(cls.id, target_date, session)
-            present_count = sum(1 for row in rows if row.present)
-            absent_count = sum(1 for row in rows if not row.present)
-            attendance_marked = len(rows) > 0
+        _, rows = _ensure_daily_attendance(cls.id, target_date, session)
+        present_count = sum(1 for row in rows if row.present)
+        absent_count = sum(1 for row in rows if not row.present)
+        attendance_marked = len(rows) > 0
 
         summaries.append(
             TeacherClassSummary(
@@ -518,7 +527,13 @@ def getTeacherClasses(teacher_id: uuid.UUID, target_date: date, session: Session
             )
         )
 
-    return summaries
+    return TeacherClassesAttendanceResponse(
+        date=target_date,
+        teacher_id=teacher_id,
+        is_holiday=False,
+        holiday_reason=None,
+        classes=summaries,
+    )
 
 
 def getParentChildrenAttendance(parent_id: uuid.UUID, year: int, month: int, session: Session) -> list[StudentMonthlyAttendance]:
@@ -572,7 +587,14 @@ def getClassesForDate(target_date: date, class_id: Optional[uuid.UUID], user_id:
     day_of_week = target_date.strftime("%A")
     reason = _holiday_reason(target_date, session)
     if reason:
-        return ClassesForDateResponse(date=target_date, day_of_week=day_of_week, total_classes=0, classes=[])
+        return ClassesForDateResponse(
+            date=target_date,
+            day_of_week=day_of_week,
+            is_holiday=True,
+            holiday_reason=reason,
+            total_classes=0,
+            classes=[],
+        )
 
     query = select(Class, Teacher).outerjoin(Teacher, Class.supervisor_id == Teacher.id).where(Class.is_delete == False)
     if class_id:
@@ -612,6 +634,8 @@ def getClassesForDate(target_date: date, class_id: Optional[uuid.UUID], user_id:
     return ClassesForDateResponse(
         date=target_date,
         day_of_week=day_of_week,
+        is_holiday=False,
+        holiday_reason=None,
         total_classes=len(class_items),
         classes=class_items,
     )
