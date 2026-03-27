@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException, UploadFile, BackgroundTasks
 from psycopg import IntegrityError
 from sqlalchemy import Select, func
 from sqlalchemy.orm import selectinload
@@ -12,6 +12,34 @@ from core.FileStorage import cleanup_pdf, process_and_save_pdf
 from core.config import settings
 from models import Assignment, Lesson, Class, Student, Result, Subject
 from schemas import AssignmentSave, AssignmentUpdate, PaginatedAssignmentResponse
+
+
+def _ingest_assignment_pdf_task(pdf_path: str, pdf_filename: str) -> None:
+    """Best-effort assignment PDF ingestion for chatbot retrieval."""
+    try:
+        from chatbot.doc_ingester import ingest_pdf
+
+        ingest_pdf(
+            pdf_path,
+            metadata={
+                "type": "assignment",
+                "filename": pdf_filename,
+            }
+        )
+        print(f"Document '{pdf_filename}' uploaded and indexed successfully.")
+    except Exception as e:
+        # Keep request flow unaffected when background indexing fails.
+        print(f"Background ingestion failed for '{pdf_filename}': {str(e)}")
+
+
+def enqueue_assignment_pdf_ingestion(background_tasks: Optional[BackgroundTasks], pdf_filename: str) -> None:
+    pdf_path = str(settings.UPLOAD_DIR_PDF / "assignments" / pdf_filename)
+
+    if background_tasks is None:
+        _ingest_assignment_pdf_task(pdf_path, pdf_filename)
+        return
+
+    background_tasks.add_task(_ingest_assignment_pdf_task, pdf_path, pdf_filename)
 
 
 def addSearchOption(query: Select, search: str):
@@ -424,7 +452,7 @@ def getAllAssignmentsOfStudentIsDeleteFalse(
 
 
 async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: UploadFile, userId: uuid.UUID, role: str,
-                                session: Session):
+                                session: Session, background_tasks: Optional[BackgroundTasks] = None):
     lesson_query = (
         select(Lesson)
         .where(Lesson.id == assignment.lesson_id, Lesson.is_delete == False)
@@ -510,21 +538,12 @@ async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: UploadFile, use
     try:
         pdf_filename = await process_and_save_pdf(pdf, "assignments", assignment.title)
 
-        from chatbot.doc_ingester import ingest_pdf
-
-        ingest_pdf(
-            settings.UPLOAD_DIR_PDF / "assignments" / pdf_filename,
-            metadata={
-                "type": "assignment",
-                "filename": pdf_filename,
-            }
-        )
-
-        print(f"Document '{pdf_filename}' uploaded and indexed successfully.")
-
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        if pdf_filename:
+            pdf_path = settings.UPLOAD_DIR_PDF / "assignments" / pdf_filename
+            cleanup_pdf(pdf_path)
         raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
 
     if not pdf_filename:
@@ -560,6 +579,8 @@ async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: UploadFile, use
 
     session.refresh(new_assignment)
 
+    enqueue_assignment_pdf_ingestion(background_tasks, pdf_filename)
+
     return {
         "id": str(new_assignment.id),
         "message": "Assignment created successfully"
@@ -567,7 +588,7 @@ async def assignmentSaveWithPdf(assignment: AssignmentSave, pdf: UploadFile, use
 
 
 async def assignmentUpdate(assignment: AssignmentUpdate, pdf: Optional[UploadFile], userId: uuid.UUID, role: str,
-                           session: Session):
+                           session: Session, background_tasks: Optional[BackgroundTasks] = None):
     find_assignment_query = (
         select(Assignment)
         .where(Assignment.id == assignment.id, Assignment.is_delete == False)
@@ -701,9 +722,11 @@ async def assignmentUpdate(assignment: AssignmentUpdate, pdf: Optional[UploadFil
         current_assignment.due_date = assignment.end_date
 
     old_pdf_filename = current_assignment.pdf_name
+    new_pdf_filename = None
     if pdf is not None:
         try:
             pdf_filename = await process_and_save_pdf(pdf, "assignments", assignment.title)
+            new_pdf_filename = pdf_filename
             current_assignment.pdf_name = pdf_filename
 
             # Clean up old PDF after successful upload
@@ -711,21 +734,12 @@ async def assignmentUpdate(assignment: AssignmentUpdate, pdf: Optional[UploadFil
             #     old_pdf_path = settings.UPLOAD_DIR_PDF / "assignments" / old_pdf_filename
             #     cleanup_pdf(old_pdf_path)
 
-            from chatbot.doc_ingester import ingest_pdf
-
-            ingest_pdf(
-                settings.UPLOAD_DIR_PDF / "assignments" / pdf_filename,
-                metadata={
-                    "type": "assignment",
-                    "filename": pdf_filename,
-                }
-            )
-
-            print(f"Document '{pdf_filename}' uploaded and indexed successfully.")
-
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
+            if new_pdf_filename:
+                new_pdf_path = settings.UPLOAD_DIR_PDF / "assignments" / new_pdf_filename
+                cleanup_pdf(new_pdf_path)
             raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
 
     session.add(current_assignment)
@@ -743,6 +757,9 @@ async def assignmentUpdate(assignment: AssignmentUpdate, pdf: Optional[UploadFil
         )
 
     session.refresh(current_assignment)
+
+    if new_pdf_filename:
+        enqueue_assignment_pdf_ingestion(background_tasks, new_pdf_filename)
 
     return {
         "id": str(current_assignment.id),

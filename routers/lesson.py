@@ -5,7 +5,7 @@ from fastapi.params import Form
 
 from core.database import SessionDep
 from fastapi import APIRouter, HTTPException
-from deps import CurrentUser, AllUser, StudentOrTeacherOrAdminUser, AdminUser, ParentUser
+from deps import CurrentUser, AllUser, StudentOrTeacherOrAdminUser, AdminUser, ParentUser, UserRole
 from models import Day
 from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIsDeleteFalse, \
     getAllLessonOfClassIsDeleteFalse, getAllLessonOfParentIsDeleteFalse, countAllLessonOfTeacher, \
@@ -166,22 +166,28 @@ def validate_lesson_data(
 
 @router.get("/getAll", response_model=PaginatedLessonResponse)
 def getAllLesson(current_user: AllUser, session: SessionDep, search: str = None, page: int = 1,
-                academic_year_id: Optional[uuid.UUID] = None):
+                 academic_year_id: Optional[uuid.UUID] = None):
     user, role = current_user
     if role == "admin":
         all_lessons = getAllLessonIsDeleteFalse(session, search, page, academic_year_id)
     elif role == "teacher":
-        all_lessons = getAllLessonOfTeacherIsDeleteFalse(user.id, session, search, page, academic_year_id=academic_year_id)
+        all_lessons = getAllLessonOfTeacherIsDeleteFalse(user.id, session, search, page,
+                                                         academic_year_id=academic_year_id)
     elif role == "student":
         all_lessons = getAllLessonOfClassIsDeleteFalse(user.class_id, session, search, page, academic_year_id)
     else:
         all_lessons = getAllLessonOfParentIsDeleteFalse(user.id, session, search, page, academic_year_id)
     return all_lessons
 
+
 @router.get("/getFullList", response_model=List[LessonRead])
-def getFullListLesson(current_user: AllUser, session: SessionDep):
+def getFullListLesson(current_user: AllUser, session: SessionDep, academic_year_id: Optional[uuid.UUID] = None):
     user, role = current_user
-    all_lessons = getAllLessonList(session)
+
+    if role == UserRole.TEACHER:
+        all_lessons = getAllLessonOfTeacherIsDeleteFalse(user.id, session, None, 1, False, academic_year_id)
+    else:
+        all_lessons = getAllLessonList(session, academic_year_id)
     return all_lessons
 
 
@@ -318,9 +324,9 @@ def getAllLessonOfClass(classId: uuid.UUID, current_user: CurrentUser, session: 
 
 @router.get("/getAllByYear", response_model=List[LessonRead])
 def getAllLessonsByAcademicYear(
-    academic_year_id: uuid.UUID,
-    current_user: StudentOrTeacherOrAdminUser,
-    session: SessionDep,
+        academic_year_id: uuid.UUID,
+        current_user: StudentOrTeacherOrAdminUser,
+        session: SessionDep,
 ):
     """Return all lessons for a given academic year, filtered by the caller's role."""
     from models import StudentClassHistory

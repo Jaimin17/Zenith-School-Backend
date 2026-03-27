@@ -215,7 +215,8 @@ def countAllLessonOfStudent(studentId: uuid.UUID, session: Session):
     return total_lessons
 
 
-def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
+def getAllLessonOfClassIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int,
+                                     academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     where_cond = [Lesson.class_id == classId, Lesson.is_delete == False]
@@ -342,7 +343,8 @@ def getAllLessonOfStudentOfCurrentWeekIsDeleteFalse(studentId: uuid.UUID, user, 
     return lessons
 
 
-def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int, academic_year_id: uuid.UUID = None):
+def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, search: str, page: int,
+                                      academic_year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     where_cond = [Student.parent_id == parentId, Lesson.is_delete == False]
@@ -389,11 +391,14 @@ def getAllLessonOfParentIsDeleteFalse(parentId: uuid.UUID, session: Session, sea
     )
 
 
-def getAllLessonList(session: Session):
+def getAllLessonList(session: Session, academic_year_id: uuid.UUID = None):
     query = (
         select(Lesson)
         .where(Lesson.is_delete == False)
     )
+
+    if academic_year_id:
+        query = query.where(Lesson.academic_year_id == academic_year_id)
 
     return session.exec(query).all()
 

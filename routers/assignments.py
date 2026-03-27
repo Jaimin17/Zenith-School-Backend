@@ -5,7 +5,7 @@ from typing import List, Union, Optional
 from sqlmodel import select
 
 from core.database import SessionDep
-from fastapi import APIRouter, HTTPException, Form, UploadFile, File
+from fastapi import APIRouter, HTTPException, Form, UploadFile, File, BackgroundTasks
 from deps import CurrentUser, AllUser, TeacherOrAdminUser
 from models import Assignment, StudentClassHistory, AcademicYear
 from repository.assignments import getAllAssignmentsIsDeleteFalse, getAllAssignmentsOfTeacherIsDeleteFalse, \
@@ -214,6 +214,7 @@ def getAllAssignmentOfStudent(
 async def saveAssignments(
         current_user: TeacherOrAdminUser,
         session: SessionDep,
+        background_tasks: BackgroundTasks,
         title: str = Form(...),
         description: str = Form(...),
         start_date: date = Form(...),
@@ -295,7 +296,7 @@ async def saveAssignments(
         lesson_id=lesson_uuid
     )
 
-    result = await assignmentSaveWithPdf(assignment, processed_pdf, user.id, role, session)
+    result = await assignmentSaveWithPdf(assignment, processed_pdf, user.id, role, session, background_tasks)
     return result
 
 
@@ -303,6 +304,7 @@ async def saveAssignments(
 async def updateAssignment(
         current_user: TeacherOrAdminUser,
         session: SessionDep,
+        background_tasks: BackgroundTasks,
         id: str = Form(...),
         title: str = Form(...),
         description: str = Form(...),
@@ -411,7 +413,7 @@ async def updateAssignment(
         lesson_id=lesson_uuid
     )
 
-    result = await assignmentUpdate(assignment, processed_pdf, user.id, role, session)
+    result = await assignmentUpdate(assignment, processed_pdf, user.id, role, session, background_tasks)
     return result
 
 
