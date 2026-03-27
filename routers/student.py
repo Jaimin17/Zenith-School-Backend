@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 
 from core.config import settings
 from deps import CurrentUser, StudentOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser, ParentOrTeacherOrAdminUser, \
-    UserRole, ParentUser
+    UserRole, ParentUser, StudentOrParentOrAdminUser
 from core.database import SessionDep
 from models import UserSex
 from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, StudentDeleteResponse, \
@@ -470,7 +470,7 @@ def assignClass(
 @router.get("/self/year-data/{academic_year_id}", response_model=StudentYearDataResponse)
 def getMyYearData(
     academic_year_id: uuid.UUID,
-    current_user: StudentOrAdminUser,
+    current_user: StudentOrParentOrAdminUser,
     session: SessionDep,
 ):
     """

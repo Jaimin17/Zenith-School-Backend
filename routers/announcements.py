@@ -61,7 +61,11 @@ def getAllAnnouncements(
                     detail="You do not have permission to access this Announcement."
                 )
 
-        announcements = getAllAnnouncementsByStudentAndIsDeleteFalse(student_id, session, search, page, from_date,
+        if student_id:
+            ID = student_id
+        else:
+            ID = user.id
+        announcements = getAllAnnouncementsByStudentAndIsDeleteFalse(ID, session, search, page, from_date,
                                                                      to_date)
 
     return announcements

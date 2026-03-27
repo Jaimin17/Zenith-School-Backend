@@ -9,8 +9,10 @@ from sqlalchemy import func, Select
 from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
 from core.security import get_password_hash
-from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance, UserSex, AcademicYear, StudentClassHistory, StudentStatus
-from schemas import StudentSave, StudentUpdateBase, PaginatedStudentResponse, updatePasswordModel, ChildItem, BulkPromoteResponse, PromoteStudentResult
+from models import Student, Teacher, Lesson, Class, Parent, Grade, Result, Attendance, UserSex, AcademicYear, \
+    StudentClassHistory, StudentStatus
+from schemas import StudentSave, StudentUpdateBase, PaginatedStudentResponse, updatePasswordModel, ChildItem, \
+    BulkPromoteResponse, PromoteStudentResult
 
 
 def addSearchOption(query: Select, search: str):
@@ -127,7 +129,8 @@ def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int, year_i
     )
 
 
-def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UUID, search: str, page: int, year_id: uuid.UUID = None):
+def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UUID, search: str, page: int,
+                                            year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     if year_id:
@@ -198,7 +201,8 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
     )
 
 
-def getAllStudentsOfParentAndIsDeleteFalse(session: Session, parentId: uuid.UUID, search: str, page: int, year_id: uuid.UUID = None):
+def getAllStudentsOfParentAndIsDeleteFalse(session: Session, parentId: uuid.UUID, search: str, page: int,
+                                           year_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     if year_id:
@@ -532,6 +536,43 @@ async def StudentUpdate(student_data: dict, img: Optional[UploadFile], session: 
                 detail=f"Class '{related_class.name}' is already full (capacity: {related_class.capacity})."
             )
 
+        current_active_academic_year_query = (
+            select(AcademicYear)
+            .where(
+                AcademicYear.is_delete == False,
+                AcademicYear.is_active == True
+            )
+        )
+
+        current_active_academic_year: Optional[AcademicYear] = session.exec(current_active_academic_year_query).first()
+
+        if current_active_academic_year is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No active academic year found with this ID."
+            )
+
+        student_history_detail_with_active_year_query = (
+            select(StudentClassHistory)
+            .where(
+                StudentClassHistory.student_id == student_data["id"],
+                StudentClassHistory.academic_year_id == current_active_academic_year.id
+            )
+        )
+
+        student_history_detail: Optional[StudentClassHistory] = session.exec(
+            student_history_detail_with_active_year_query).first()
+
+        if student_history_detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No student history found with this ID. First sync all the users."
+            )
+
+        student_history_detail.class_id = student_data["class_id"]
+
+        session.add(student_history_detail)
+
     # Validate grade_id
     grade_query = select(Grade).where(
         Grade.id == student_data["grade_id"],
@@ -689,10 +730,10 @@ def getChildrenOfParentLightweight(parent_id: uuid.UUID, session: Session) -> Li
 # ─────────────────────────────────────────────────────────────────────────────
 
 def bulkPromoteStudents(
-    from_year_id: uuid.UUID,
-    to_year_id: uuid.UUID,
-    dry_run: bool,
-    session: Session,
+        from_year_id: uuid.UUID,
+        to_year_id: uuid.UUID,
+        dry_run: bool,
+        session: Session,
 ) -> BulkPromoteResponse:
     # ── validate years ──
     from_year = session.exec(
@@ -927,10 +968,10 @@ def bulkPromoteStudents(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def assignClassToStudent(
-    student_id: uuid.UUID,
-    class_id: uuid.UUID,
-    academic_year_id: Optional[uuid.UUID],
-    session: Session,
+        student_id: uuid.UUID,
+        class_id: uuid.UUID,
+        academic_year_id: Optional[uuid.UUID],
+        session: Session,
 ) -> dict:
     student = session.exec(
         select(Student).where(Student.id == student_id, Student.is_delete == False)

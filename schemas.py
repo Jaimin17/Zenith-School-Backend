@@ -349,16 +349,6 @@ class PaginatedSubjectResponse(PaginatedBaseResponse):
     data: List[SubjectRead]
 
 
-class StudentRead(StudentBase):
-    parent: Optional[ParentBase] = None
-    related_class: Optional[ClassBase] = None
-    grade: Optional[GradeBase] = None
-
-
-class PaginatedStudentResponse(PaginatedBaseResponse):
-    data: List[StudentRead]
-
-
 class StudentSave(SQLModel):
     username: str
     first_name: str
@@ -978,7 +968,7 @@ class StudentClassHistoryRead(SQLModel):
     academic_year: Optional[AcademicYearBase] = None
     class_id: Optional[uuid.UUID] = None
     grade_id: Optional[uuid.UUID] = None
-    class_name: Optional[str] = None   # resolved by router from class_id
+    class_name: Optional[str] = None  # resolved by router from class_id
     grade_level: Optional[int] = None  # resolved by router from grade_id
     created_at: datetime
 
@@ -1003,9 +993,9 @@ class PromoteStudentResult(SQLModel):
     action: str  # "promoted", "graduated", "skipped", "error"
     from_grade_level: Optional[int] = None
     to_grade_level: Optional[int] = None
-    class_assigned: Optional[str] = None   # class name if assigned
+    class_assigned: Optional[str] = None  # class name if assigned
     previous_class_name: str = None
-    class_not_found: bool = False           # True if section missing in next grade
+    class_not_found: bool = False  # True if section missing in next grade
     detail: Optional[str] = None
 
 
@@ -1052,6 +1042,7 @@ class StudentYearAttendanceSummary(SQLModel):
     absent_days: int
     attendance_percentage: float
 
+
 class StudentYearDataResponse(SQLModel):
     academic_year: AcademicYearBase
     class_id: Optional[uuid.UUID] = None
@@ -1062,6 +1053,7 @@ class StudentYearDataResponse(SQLModel):
     attendance_summary: StudentYearAttendanceSummary
     results: List[ResultRead]
     lessons: List[LessonBase]
+
 
 # ===================== Holiday Schemas =====================
 class HolidayBase(SQLModel):
@@ -1086,3 +1078,14 @@ class HolidayUpdate(SQLModel):
     date: Optional[date] = None
     name: Optional[str] = None
     description: Optional[str] = None
+
+
+class StudentRead(StudentBase):
+    parent: Optional[ParentBase] = None
+    related_class: Optional[ClassBase] = None
+    grade: Optional[GradeBase] = None
+    class_histories: List[StudentClassHistoryRead] = []
+
+
+class PaginatedStudentResponse(PaginatedBaseResponse):
+    data: List[StudentRead]

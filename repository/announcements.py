@@ -165,25 +165,53 @@ def getAllAnnouncementsByStudentAndIsDeleteFalse(
 ):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    current_class_query = (
-        select(StudentClassHistory)
-        .join(AcademicYear, onclause=(AcademicYear.id == StudentClassHistory.academic_year_id))
-        .where(
-            StudentClassHistory.student_id == studentId,
-            AcademicYear.start_date == from_date,
-            AcademicYear.is_delete == False,
-        )
-    )
+    if not studentId:
+        raise HTTPException(status_code=400, detail="Student ID is required.")
 
-    current_class_detail: Optional[StudentClassHistory] = session.exec(current_class_query).first()
+    current_class_detail: Optional[StudentClassHistory] = None
+
+    if from_date:
+        # Primary path: resolve class by academic year start date for historical lookups.
+        current_class_query = (
+            select(StudentClassHistory)
+            .join(AcademicYear, onclause=(AcademicYear.id == StudentClassHistory.academic_year_id))
+            .where(
+                StudentClassHistory.student_id == studentId,
+                AcademicYear.start_date == from_date,
+                AcademicYear.is_delete == False,
+            )
+        )
+        current_class_detail = session.exec(current_class_query).first()
+
+    if not current_class_detail:
+        # Fallback: most recent class history for this student.
+        history_fallback_query = (
+            select(StudentClassHistory)
+            .where(StudentClassHistory.student_id == studentId)
+            .order_by(StudentClassHistory.created_at.desc())
+        )
+        current_class_detail = session.exec(history_fallback_query).first()
+
+    current_class_id: Optional[uuid.UUID] = current_class_detail.class_id if current_class_detail else None
+
+    if not current_class_id:
+        # Final fallback: current class stored directly on student.
+        student = session.get(Student, studentId)
+        current_class_id = student.class_id if student and not student.is_delete else None
 
     # Base condition: general announcements (no class) OR announcements for student's class
-    base_where = and_(
-        Announcement.is_delete == False,
+    class_scope_condition = (
         or_(
             Announcement.class_id == None,  # general announcements for everyone
-            Announcement.class_id == current_class_detail.class_id
+            Announcement.class_id == current_class_id
         )
+        if current_class_id
+        else (Announcement.class_id == None)
+    )
+
+    base_where = and_(
+        Announcement.is_delete == False,
+        class_scope_condition,
     )
 
     # Count query
