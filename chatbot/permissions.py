@@ -7,7 +7,8 @@ ROLE_PERMISSIONS = {
         "allowed_tables": [
             "student", "attendance", "result", "lesson",
             "exam", "assignment", "announcement", "event",
-            "class", "grade", "subject",
+            "class", "grade", "subject", "academic_year", "student_class_history",
+            "holiday", "banner",
         ],
         "scope": "own_data",
         "description": "student",
@@ -17,6 +18,7 @@ ROLE_PERMISSIONS = {
             "teacher", "lesson", "exam", "assignment", "attendance",
             "result", "student", "class", "subject",
             "teacher_subject_link", "announcement", "event", "grade",
+            "academic_year", "student_class_history", "holiday", "banner",
         ],
         "scope": "class_data",
         "description": "teacher",
@@ -25,6 +27,7 @@ ROLE_PERMISSIONS = {
         "allowed_tables": [
             "parent", "student", "attendance", "result", "lesson",
             "exam", "assignment", "announcement", "event", "class", "grade", "subject",
+            "academic_year", "student_class_history", "holiday", "banner",
         ],
         "scope": "child_data",
         "description": "parent",
@@ -35,6 +38,7 @@ ROLE_PERMISSIONS = {
             "class", "grade", "subject", "teacher_subject_link",
             "lesson", "exam", "assignment",
             "result", "attendance", "announcement", "event",
+            "academic_year", "student_class_history", "holiday", "banner",
         ],
         "scope": "all_data",
         "description": "admin",

@@ -11,6 +11,22 @@ from core.config import settings
 
 llm = OllamaLLM(model=settings.CHATBOT_MODEL, temperature=0)
 
+# Intent constants used by orchestrator and telemetry.
+INTENT_SCHOOL_DATA = "sql"
+INTENT_SCHOOL_DOCS = "doc"
+INTENT_HYBRID = "both"
+INTENT_OUT_OF_SCOPE = "out_of_scope"
+
+_DOC_KEYWORDS = {
+    "policy", "policies", "rubric", "rubrics", "handbook", "guideline",
+    "instructions", "syllabus", "document", "pdf",
+}
+_OUT_OF_SCOPE_HINTS = {
+    "fifa", "cricket", "ipl", "bitcoin", "stock", "weather", "recipe", "movie",
+    "politics", "prime minister", "celebrity", "programming interview",
+}
+_MULTI_OBJECTIVE_JOINERS = re.compile(r"\b(and|also|plus|along with|as well as|compare)\b", re.IGNORECASE)
+
 # ─────────────────────────────────────────────────────────────────
 # PROMPT 1: TYPE DECIDER  (~200 tokens)
 # Tiny prompt, one job: return sql / doc / both
@@ -180,6 +196,20 @@ def _keyword_precheck(query: str) -> str | None:
     return None
 
 
+def _is_out_of_scope(query: str) -> bool:
+    words = set(re.findall(r"\b\w+\b", query.lower()))
+    in_domain = bool(words.intersection(set(KEYWORD_TABLE_MAP.keys()) | _DOC_KEYWORDS))
+    out_scope_hit = bool(words.intersection(_OUT_OF_SCOPE_HINTS))
+    return out_scope_hit and not in_domain
+
+
+def _decompose_query(query: str) -> list[str]:
+    if not _MULTI_OBJECTIVE_JOINERS.search(query):
+        return [query.strip()]
+    parts = re.split(r"\b(?:and|also|plus|along with|as well as|compare)\b", query, flags=re.IGNORECASE)
+    return [p.strip(" ,.") for p in parts if p.strip(" ,.")]
+
+
 # ─────────────────────────────────────────────────────────────────
 # STEP 1: Decide type
 # ─────────────────────────────────────────────────────────────────
@@ -275,6 +305,19 @@ def classify_and_generate_query(query: str, permission_ctx: dict, chat_history: 
     Returns:
         { type, sql, search_phrase, reasoning }
     """
+    objectives = _decompose_query(query)
+    decomposition_mode = len(objectives) > 1
+
+    if _is_out_of_scope(query):
+        return {
+            "type": INTENT_OUT_OF_SCOPE,
+            "sql": None,
+            "search_phrase": None,
+            "reasoning": "type=out_of_scope | sql=no | doc=no",
+            "decomposition_mode": decomposition_mode,
+            "objectives": objectives,
+        }
+
     query_type = _decide_type(query, chat_history)
 
     sql = None
@@ -294,4 +337,6 @@ def classify_and_generate_query(query: str, permission_ctx: dict, chat_history: 
         "sql": sql,
         "search_phrase": search_phrase,
         "reasoning": f"type={query_type} | sql={'yes' if sql else 'no'} | doc={'yes' if search_phrase else 'no'}",
+        "decomposition_mode": decomposition_mode,
+        "objectives": objectives,
     }

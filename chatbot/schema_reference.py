@@ -10,6 +10,8 @@ User says "sci" → matches "Science", "Computer Science" etc.
 student(id,first_name,last_name,email,phone,sex,dob,is_delete, parent_id→parent.id, class_id→"class".id, grade_id→grade.id)
 teacher(id,first_name,last_name,email,phone,sex,dob,is_delete)
 parent(id,first_name,last_name,email,phone,is_delete)
+academic_year(id,year_label,start_date,end_date,is_active,is_delete)
+student_class_history(id,student_id→student.id,academic_year_id→academic_year.id,class_id→"class".id,grade_id→grade.id,created_at)
 "class"(id,name,capacity,is_delete, supervisor_id→teacher.id, grade_id→grade.id)
 grade(id,level,is_delete)
 subject(id,name,is_delete)
@@ -21,6 +23,8 @@ result(id,score,is_delete, student_id→student.id, exam_id→exam.id, assignmen
 attendance(id,attendance_date,present,is_delete, student_id→student.id, lesson_id→lesson.id)
 announcement(id,title,description,announcement_date,is_delete, class_id→"class".id)
 event(id,title,description,start_time,end_time,is_delete, class_id→"class".id)
+holiday(id,date,name,description)
+banner(id,title,description,img,is_active,is_delete,created_at)
 
 FK DIRECTIONS (critical — do not reverse these):
   exam.lesson_id → lesson.id           JOIN lesson l ON l.id = e.lesson_id
@@ -33,6 +37,8 @@ FK DIRECTIONS (critical — do not reverse these):
   attendance.student_id → student.id   JOIN student st ON st.id = a.student_id
   attendance.lesson_id → lesson.id     JOIN lesson l ON l.id = a.lesson_id
   student.class_id → "class".id        JOIN "class" c ON c.id = st.class_id
+  student_class_history.student_id → student.id JOIN student st ON st.id = sch.student_id
+  student_class_history.academic_year_id → academic_year.id JOIN academic_year ay ON ay.id = sch.academic_year_id
 
 CRITICAL RULE — result vs exam table:
   result table = only contains GRADED/RELEASED scores. An exam with no result yet = not in result table.
@@ -158,6 +164,24 @@ WHERE (class_id = (SELECT class_id FROM student WHERE id = CAST('STUDENT_ID' AS 
    OR class_id IS NULL)
   AND is_delete = false
 ORDER BY start_time DESC;
+
+[active academic year]
+SELECT id, year_label, start_date, end_date
+FROM academic_year
+WHERE is_active = true
+  AND is_delete = false
+ORDER BY start_date DESC
+LIMIT 1;
+
+[student class history by year]
+SELECT ay.year_label, c.name as class_name, g.level as grade_level, sch.created_at
+FROM student_class_history sch
+JOIN academic_year ay ON ay.id = sch.academic_year_id
+LEFT JOIN "class" c ON c.id = sch.class_id
+LEFT JOIN grade g ON g.id = sch.grade_id
+WHERE sch.student_id = CAST('STUDENT_ID' AS UUID)
+  AND ay.is_delete = false
+ORDER BY ay.start_date DESC;
 """
 
 # ── Keyword pre-router ────────────────────────────────────────────
@@ -187,10 +211,15 @@ KEYWORD_TABLE_MAP = {
     "subject": "subject", "subjects": "subject",
     "teacher": "teacher", "teachers": "teacher",
     "student": "student", "students": "student",
+    "year": "academic_year", "years": "academic_year",
+    "academic": "academic_year", "history": "student_class_history",
+    "holiday": "holiday", "holidays": "holiday",
+    "banner": "banner", "banners": "banner",
 }
 
 DB_ONLY_TABLES = {
     "attendance", "result", "student", "teacher",
     "parent", "grade", "class", "lesson",
     "exam", "announcement", "event", "subject",
+    "academic_year", "student_class_history", "holiday", "banner",
 }

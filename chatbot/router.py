@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from deps import AllUser, UserRole
 from schemas import ChatRequest
 from chatbot.rag_engine import run_agent_stream
+from chatbot.telemetry import create_request_id, log_event
 from core.database import SessionDep
 
 router = APIRouter(
@@ -20,11 +21,12 @@ async def chat(request: ChatRequest, current_user: AllUser, session: SessionDep)
     Frontend reads this as a stream, not a single response.
     """
     user, role = current_user
+    request_id = create_request_id()
 
     async def event_stream():
         try:
             # Send a start event so frontend knows stream began
-            yield f"data: {json.dumps({'type': 'start'})}\n\n"
+            yield f"data: {json.dumps({'type': 'start', 'request_id': request_id})}\n\n"
 
             if role == UserRole.PARENT:
                 student_ids = {}
@@ -38,10 +40,14 @@ async def chat(request: ChatRequest, current_user: AllUser, session: SessionDep)
                         user_id=user.id,
                         extra=student_ids,
                         session=session,
-                        chat_history=request.chat_history
+                        chat_history=request.chat_history,
+                        request_id=request_id,
                 ):
-                    # Each token is sent as an SSE data event
-                    payload = json.dumps({"type": "token", "value": token})
+                    payload: str
+                    if isinstance(token, dict):
+                        payload = json.dumps(token)
+                    else:
+                        payload = json.dumps({"type": "token", "value": token})
                     yield f"data: {payload}\n\n"
                     await asyncio.sleep(0)  # yield control to event loop
             else:
@@ -51,16 +57,21 @@ async def chat(request: ChatRequest, current_user: AllUser, session: SessionDep)
                         role=role,
                         user_id=user.id,
                         session=session,
-                        chat_history=request.chat_history
+                        chat_history=request.chat_history,
+                        request_id=request_id,
                 ):
-                    # Each token is sent as an SSE data event
-                    payload = json.dumps({"type": "token", "value": token})
+                    payload: str
+                    if isinstance(token, dict):
+                        payload = json.dumps(token)
+                    else:
+                        payload = json.dumps({"type": "token", "value": token})
                     yield f"data: {payload}\n\n"
                     await asyncio.sleep(0)  # yield control to event loop
 
             # Send done event so frontend knows stream ended
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
+            log_event("stream_error", request_id, error=str(e))
             error_payload = json.dumps({"type": "error", "message": str(e)})
             yield f"data: {error_payload}\n\n"
 
