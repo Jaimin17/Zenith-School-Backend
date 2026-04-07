@@ -1,0 +1,84 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+from chatbot.sql_executor import execute_sql_query
+from chatbot.vector_search import search_documents
+
+
+@dataclass
+class ToolResult:
+    status: str
+    payload: Any = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+
+
+class ToolAdapter(Protocol):
+    def execute(self, context: dict[str, Any], resolved_inputs: dict[str, Any]) -> ToolResult:
+        ...
+
+
+class SqlToolAdapter:
+    def execute(self, context: dict[str, Any], resolved_inputs: dict[str, Any]) -> ToolResult:
+        sql = str(resolved_inputs.get("sql", "")).strip()
+        if not sql:
+            return ToolResult(status="failed", error="Missing SQL input for sql tool.")
+
+        rows = execute_sql_query(
+            sql,
+            context["session"],
+            request_id=context.get("request_id"),
+            subtask_id=context.get("step_id"),
+        )
+
+        if rows and isinstance(rows, list) and isinstance(rows[0], dict) and rows[0].get("error"):
+            return ToolResult(status="failed", payload=rows, error=rows[0]["error"])
+
+        return ToolResult(
+            status="ok",
+            payload=rows,
+            metadata={"row_count": len(rows) if isinstance(rows, list) else 0},
+        )
+
+
+class VectorToolAdapter:
+    def execute(self, context: dict[str, Any], resolved_inputs: dict[str, Any]) -> ToolResult:
+        query = str(resolved_inputs.get("query", "")).strip()
+        if not query:
+            return ToolResult(status="failed", error="Missing query input for vector tool.")
+
+        k = int(resolved_inputs.get("k", 4))
+        docs = search_documents(
+            query,
+            k=k,
+            request_id=context.get("request_id"),
+            subtask_id=context.get("step_id"),
+        )
+
+        return ToolResult(
+            status="ok",
+            payload=docs,
+            metadata={"k": k, "chars": len(docs)},
+        )
+
+
+class ToolRegistry:
+    def __init__(self) -> None:
+        self._registry: dict[str, ToolAdapter] = {}
+
+    def register(self, tool_name: str, adapter: ToolAdapter) -> None:
+        self._registry[tool_name] = adapter
+
+    def get(self, tool_name: str) -> ToolAdapter:
+        if tool_name not in self._registry:
+            raise KeyError(f"No adapter registered for tool '{tool_name}'.")
+        return self._registry[tool_name]
+
+
+def create_default_tool_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+    registry.register("sql", SqlToolAdapter())
+    registry.register("vector", VectorToolAdapter())
+    return registry

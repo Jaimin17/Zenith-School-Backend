@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     MAX_PDF_FILE_SIZE: int = 10 * 1024 * 1024
 
     CHATBOT_MODEL: str
+    ENABLE_GENERIC_PLANNER: bool = False
+    PLANNER_MAX_STEPS: int = 5
+    PLANNER_STEP_TIMEOUT_MS: int = 6000
+    PLANNER_GLOBAL_TIMEOUT_MS: int = 20000
+    PLANNER_MAX_PAYLOAD_CHARS: int = 12000
 
     @property
     def allowed_extensions(self) -> set[str]:

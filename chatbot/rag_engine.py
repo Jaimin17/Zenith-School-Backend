@@ -6,6 +6,14 @@ from chatbot.classifier import classify_and_generate_query, INTENT_OUT_OF_SCOPE
 from chatbot.sql_executor import execute_sql_query
 from chatbot.vector_search import search_documents
 from chatbot.formatter import FORMAT_PROMPT
+from chatbot.plan_executor import execute_plan
+from chatbot.planner import (
+    PlanValidationError,
+    build_plan_from_decision,
+    build_plan_from_objectives,
+    validate_plan,
+)
+from chatbot.tool_registry import create_default_tool_registry
 from langchain_ollama import OllamaLLM
 import uuid, json
 from typing import AsyncGenerator, Any
@@ -17,6 +25,48 @@ from chatbot.telemetry import log_event
 # Separate LLM instance for streaming (formatter step only)
 streaming_llm = OllamaLLM(model=settings.CHATBOT_MODEL, temperature=0.3, streaming=True)
 MAX_DECOMPOSE_OBJECTIVES = 4
+
+
+def _resolve_data_source_from_tools(tools: set[str]) -> str:
+    if tools == {"sql"}:
+        return "the school database"
+    if tools == {"vector"}:
+        return "uploaded school documents"
+    if tools:
+        return "the school database and uploaded documents"
+    return "no retrievable source"
+
+
+def _format_plan_report(report: Any, max_chars: int) -> tuple[str, str, int]:
+    sections: list[str] = []
+    tools_used: set[str] = set()
+    completed = 0
+
+    for rec in report.records:
+        tools_used.add(rec.tool)
+        if rec.status == "succeeded":
+            completed += 1
+
+        if rec.tool == "sql":
+            payload = json.dumps(rec.payload, indent=2, default=str)
+            section = f"[{rec.step_id}] SQL ({rec.status})\n{payload}"
+        elif rec.tool == "vector":
+            payload = str(rec.payload or "")
+            section = f"[{rec.step_id}] VECTOR ({rec.status})\n{payload}"
+        else:
+            payload = json.dumps(rec.payload, indent=2, default=str)
+            section = f"[{rec.step_id}] {rec.tool.upper()} ({rec.status})\n{payload}"
+
+        if rec.error:
+            section += f"\nError: {rec.error}"
+
+        sections.append(section)
+
+    combined = "\n\n".join(sections)
+    if len(combined) > max_chars:
+        combined = combined[:max_chars] + "\n\n[truncated due to payload limit]"
+
+    return combined, _resolve_data_source_from_tools(tools_used), completed
 
 
 async def _run_objective_task(
@@ -134,10 +184,73 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
     raw_data = ""
     data_source = ""
 
-    # ── Step 3A: Multi-objective handling (decomposition mode) ──
+    # ── Step 3A: Generic planner execution path (feature-flagged) ──
     objectives = decision.get("objectives", [])
     decomposition_mode = bool(decision.get("decomposition_mode")) and len(objectives) > 1
-    if decomposition_mode and decision.get("type") != INTENT_OUT_OF_SCOPE:
+    planner_succeeded = False
+
+    if settings.ENABLE_GENERIC_PLANNER and decision.get("type") != INTENT_OUT_OF_SCOPE:
+        try:
+            yield {"type": "stage", "value": "planning"}
+
+            if decomposition_mode:
+                candidate_objectives = objectives
+                if len(candidate_objectives) > MAX_DECOMPOSE_OBJECTIVES:
+                    candidate_objectives = candidate_objectives[:MAX_DECOMPOSE_OBJECTIVES]
+                    if request_id:
+                        log_event(
+                            "decomposition_truncated",
+                            request_id,
+                            max_objectives=MAX_DECOMPOSE_OBJECTIVES,
+                            original_count=len(decision.get("objectives", [])),
+                        )
+
+                sub_decisions = [
+                    classify_and_generate_query(objective, permission_ctx, chat_history)
+                    for objective in candidate_objectives
+                ]
+                plan = build_plan_from_objectives(candidate_objectives, sub_decisions)
+            else:
+                plan = build_plan_from_decision(query, decision)
+
+            levels = validate_plan(plan, max_steps=settings.PLANNER_MAX_STEPS)
+
+            yield {"type": "stage", "value": "plan_execute"}
+            report = await execute_plan(
+                plan=plan,
+                levels=levels,
+                registry=create_default_tool_registry(),
+                shared_context={"session": session, "request_id": request_id},
+                step_timeout_ms=settings.PLANNER_STEP_TIMEOUT_MS,
+                global_timeout_ms=settings.PLANNER_GLOBAL_TIMEOUT_MS,
+            )
+            raw_data, data_source, completed = _format_plan_report(
+                report,
+                max_chars=settings.PLANNER_MAX_PAYLOAD_CHARS,
+            )
+            planner_succeeded = completed > 0
+            if request_id:
+                log_event(
+                    "planner_route_completed",
+                    request_id,
+                    completed_steps=completed,
+                    total_steps=len(report.records),
+                    planner_succeeded=planner_succeeded,
+                )
+            if completed == 0:
+                yield "I could not retrieve data for this request. Please refine the question with class, subject, or timeframe."
+                if request_id:
+                    log_event("request_failed", request_id, reason="planner_empty")
+                return
+        except PlanValidationError as exc:
+            if request_id:
+                log_event("plan_invalid", request_id, error=str(exc))
+        except Exception as exc:
+            if request_id:
+                log_event("planner_error", request_id, error=str(exc))
+
+    # ── Step 3B: Legacy multi-objective handling (fallback) ──
+    if not planner_succeeded and decomposition_mode and decision.get("type") != INTENT_OUT_OF_SCOPE:
         if len(objectives) > MAX_DECOMPOSE_OBJECTIVES:
             objectives = objectives[:MAX_DECOMPOSE_OBJECTIVES]
             if request_id:
@@ -202,19 +315,19 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
                 log_event("request_failed", request_id, reason="decomposition_empty")
             return
 
-    # ── Step 3: Execute based on LLM decision ──
-    if not decomposition_mode and decision["type"] == "sql" and decision.get("sql"):
+    # ── Step 3C: Legacy single-step handling (fallback) ──
+    if not planner_succeeded and not decomposition_mode and decision["type"] == "sql" and decision.get("sql"):
         yield {"type": "stage", "value": "sql_fetch"}
         rows = execute_sql_query(decision["sql"], session, request_id=request_id, subtask_id="sql-main")
         raw_data = json.dumps(rows, indent=2, default=str)
         data_source = "the school database"
 
-    elif not decomposition_mode and decision["type"] == "doc" and decision.get("search_phrase"):
+    elif not planner_succeeded and not decomposition_mode and decision["type"] == "doc" and decision.get("search_phrase"):
         yield {"type": "stage", "value": "doc_fetch"}
         raw_data = search_documents(decision["search_phrase"], request_id=request_id, subtask_id="doc-main")
         data_source = "uploaded school documents"
 
-    elif not decomposition_mode and decision["type"] == "both":
+    elif not planner_succeeded and not decomposition_mode and decision["type"] == "both":
         yield {"type": "stage", "value": "sql_fetch"}
         sql_rows, doc_chunks = "", ""
 
@@ -229,7 +342,7 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
         raw_data = f"--- Database ---\n{sql_rows}\n\n--- Documents ---\n{doc_chunks}"
         data_source = "the school database and uploaded documents"
 
-    elif not decomposition_mode and decision["type"] == INTENT_OUT_OF_SCOPE:
+    elif not planner_succeeded and not decomposition_mode and decision["type"] == INTENT_OUT_OF_SCOPE:
         yield {"type": "stage", "value": "out_of_scope"}
         message = (
             "I can help with school data and documents such as assignments, attendance, results, "
@@ -241,7 +354,7 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
         yield message
         return
 
-    else:
+    elif not planner_succeeded:
         # If LLM couldn't decide, yield a simple message and stop
         if request_id:
             log_event("request_failed", request_id, reason="unclassified")
