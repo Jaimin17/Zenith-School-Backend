@@ -6,6 +6,7 @@ from chatbot.schema_reference import (
     DB_ONLY_TABLES,
 )
 import re
+import json
 
 from core.config import settings
 
@@ -45,6 +46,57 @@ TYPE_DECIDER_PROMPT = PromptTemplate(
     Query: {query}
     
     One word:""",
+)
+
+
+BATCH_OBJECTIVE_PLANNER_PROMPT = PromptTemplate(
+        input_variables=[
+                "query",
+                "objectives_json",
+                "mandatory_filter",
+                "allowed",
+                "schema",
+                "chat_history",
+        ],
+        template="""\
+        You are planning objective-level retrieval for a school assistant.
+
+        Return JSON ONLY. No markdown. No explanation.
+
+        Input query: {query}
+        Objectives (JSON array): {objectives_json}
+        previous history: {chat_history}
+
+        MANDATORY SQL FILTER (must be included in every SQL when SQL is used):
+        {mandatory_filter}
+
+        SQL safety rules:
+        - Only SELECT.
+        - No INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE.
+        - Every table needs is_delete=false.
+        - Use only these tables: {allowed}
+        - Prefer ILIKE '%term%' for text matching.
+
+        Schema reference:
+        {schema}
+
+        Output format:
+        [
+            {{
+                "objective": "<objective text>",
+                "type": "sql|doc|both|out_of_scope",
+                "sql": "<SELECT SQL or null>",
+                "search_phrase": "<document query phrase or null>",
+                "vector_from_sql_field": "<optional field name from SQL rows for dependent vector query>",
+                "vector_prefix": "<optional prefix text for vector query>",
+                "reasoning": "<short reason>"
+            }}
+        ]
+
+        Dependency hint:
+        - If objective needs SQL result first (example: latest assignment title, then fetch assignment details from docs),
+            set type='both', provide sql, and set vector_from_sql_field to the SQL column name to use.
+        """,
 )
 
 # ─────────────────────────────────────────────────────────────────
@@ -340,3 +392,106 @@ def classify_and_generate_query(query: str, permission_ctx: dict, chat_history: 
         "decomposition_mode": decomposition_mode,
         "objectives": objectives,
     }
+
+
+def _normalize_sql_candidate(sql: str | None, permission_ctx: dict) -> str | None:
+    if not sql:
+        return None
+
+    raw = str(sql).strip()
+    raw = re.sub(r"```(?:sql|postgresql)?\s*", "", raw, flags=re.IGNORECASE)
+    raw = raw.replace("```", "").strip()
+
+    if not raw.upper().lstrip().startswith("SELECT"):
+        return None
+
+    if re.search(r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE)\b", raw, re.IGNORECASE):
+        return None
+
+    raw = _enforce_ilike(raw)
+
+    role = permission_ctx["role"]
+    user_id = permission_ctx["user_id"]
+    extra = permission_ctx.get("extra", {})
+    if not _validate_sql_for_role(raw, role, user_id, extra):
+        return None
+
+    return raw
+
+
+def classify_objectives_batch(
+        query: str,
+        objectives: list[str],
+        permission_ctx: dict,
+        chat_history: list[dict],
+) -> list[dict]:
+    if not objectives:
+        return []
+
+    role = permission_ctx["role"]
+    user_id = permission_ctx["user_id"]
+    extra = permission_ctx.get("extra", {})
+    mandatory_filter = _build_mandatory_filter(role, user_id, extra)
+
+    raw = llm.invoke(BATCH_OBJECTIVE_PLANNER_PROMPT.format(
+        query=query,
+        objectives_json=json.dumps(objectives, ensure_ascii=True),
+        mandatory_filter=mandatory_filter,
+        allowed=", ".join(permission_ctx["allowed_tables"]),
+        schema=DB_SCHEMA_COMPACT,
+        chat_history="\n".join(
+            f"{m['role'].upper()}: {m['content']}"
+            for m in chat_history[-4:]
+        ),
+    )).strip()
+
+    cleaned = re.sub(r"```(?:json)?\s*", "", raw, flags=re.IGNORECASE).replace("```", "").strip()
+    parsed = None
+    try:
+        parsed = json.loads(cleaned)
+    except Exception:
+        match = re.search(r"(\[.*\]|\{.*\})", cleaned, flags=re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(1))
+            except Exception:
+                parsed = None
+
+    if isinstance(parsed, dict):
+        items = parsed.get("objectives") if isinstance(parsed.get("objectives"), list) else []
+    elif isinstance(parsed, list):
+        items = parsed
+    else:
+        items = []
+
+    normalized: list[dict] = []
+    for i, objective in enumerate(objectives):
+        item = items[i] if i < len(items) and isinstance(items[i], dict) else {}
+        decision_type = str(item.get("type", "doc")).strip().lower()
+        if decision_type not in {"sql", "doc", "both", INTENT_OUT_OF_SCOPE}:
+            decision_type = "doc"
+
+        sql = _normalize_sql_candidate(item.get("sql"), permission_ctx)
+        search_phrase = item.get("search_phrase") or objective
+
+        if decision_type in {"sql", "both"} and not sql:
+            if decision_type == "sql":
+                decision_type = "doc"
+            else:
+                decision_type = "doc"
+
+        vector_from_sql_field = item.get("vector_from_sql_field")
+        if decision_type != "both":
+            vector_from_sql_field = None
+
+        normalized.append({
+            "objective": objective,
+            "type": decision_type,
+            "sql": sql,
+            "search_phrase": search_phrase if decision_type in {"doc", "both"} else None,
+            "vector_from_sql_field": vector_from_sql_field,
+            "vector_prefix": item.get("vector_prefix") or "",
+            "reasoning": item.get("reasoning") or "batch_objective_planner",
+        })
+
+    return normalized

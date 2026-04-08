@@ -144,7 +144,45 @@ def build_plan_from_objectives(objectives: list[str], decisions: list[dict[str, 
 
     for index, objective in enumerate(objectives, start=1):
         decision = decisions[index - 1]
-        partial = build_plan_from_decision(objective, decision, prefix=f"obj-{index}")
-        steps.extend(partial.steps)
+        prefix = f"obj-{index}"
+        sql_step_id = f"{prefix}-sql"
+
+        if decision.get("type") in {"sql", "both"} and decision.get("sql"):
+            steps.append(
+                PlanStep(
+                    step_id=sql_step_id,
+                    tool="sql",
+                    inputs={"sql": decision["sql"], "objective": objective},
+                )
+            )
+
+        if decision.get("type") in {"doc", "both"}:
+            search_phrase = decision.get("search_phrase") or objective
+            vector_from_sql_field = decision.get("vector_from_sql_field")
+
+            depends_on: list[str] = []
+            vector_inputs: dict[str, Any]
+            if vector_from_sql_field and any(s.step_id == sql_step_id for s in steps):
+                depends_on = [sql_step_id]
+                vector_inputs = {
+                    "k": 4,
+                    "query_from_sql": {
+                        "rows": {"ref": sql_step_id, "path": "payload"},
+                        "field": vector_from_sql_field,
+                        "prefix": decision.get("vector_prefix") or "",
+                        "fallback": search_phrase,
+                    },
+                }
+            else:
+                vector_inputs = {"query": search_phrase, "k": 4}
+
+            steps.append(
+                PlanStep(
+                    step_id=f"{prefix}-vector",
+                    tool="vector",
+                    inputs=vector_inputs,
+                    depends_on=depends_on,
+                )
+            )
 
     return Plan(steps=steps)

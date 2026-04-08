@@ -2,7 +2,7 @@ from sqlmodel import Session
 import asyncio
 
 from chatbot.permissions import get_user_permission_context
-from chatbot.classifier import classify_and_generate_query, INTENT_OUT_OF_SCOPE
+from chatbot.classifier import classify_and_generate_query, classify_objectives_batch, INTENT_OUT_OF_SCOPE
 from chatbot.sql_executor import execute_sql_query
 from chatbot.vector_search import search_documents
 from chatbot.formatter import FORMAT_PROMPT
@@ -188,6 +188,8 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
     objectives = decision.get("objectives", [])
     decomposition_mode = bool(decision.get("decomposition_mode")) and len(objectives) > 1
     planner_succeeded = False
+    cached_sub_decisions: list[dict[str, Any]] | None = None
+    skipped_objectives_notes: list[str] = []
 
     if settings.ENABLE_GENERIC_PLANNER and decision.get("type") != INTENT_OUT_OF_SCOPE:
         try:
@@ -205,13 +207,49 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
                             original_count=len(decision.get("objectives", [])),
                         )
 
-                sub_decisions = [
-                    classify_and_generate_query(objective, permission_ctx, chat_history)
-                    for objective in candidate_objectives
-                ]
+                if request_id:
+                    log_event(
+                        "batch_objective_planning_started",
+                        request_id,
+                        objective_count=len(candidate_objectives),
+                    )
+
+                sub_decisions = classify_objectives_batch(
+                    query=query,
+                    objectives=candidate_objectives,
+                    permission_ctx=permission_ctx,
+                    chat_history=chat_history,
+                )
+
+                cached_sub_decisions = sub_decisions
+                objectives = candidate_objectives
                 plan = build_plan_from_objectives(candidate_objectives, sub_decisions)
+
+                skipped_objectives_notes = [
+                    f"{i + 1}. {obj}"
+                    for i, (obj, dec) in enumerate(zip(candidate_objectives, sub_decisions))
+                    if dec.get("type") == INTENT_OUT_OF_SCOPE
+                ]
+
+                if request_id:
+                    log_event(
+                        "batch_objective_planning_completed",
+                        request_id,
+                        objective_count=len(candidate_objectives),
+                        planned_steps=len(plan.steps),
+                    )
             else:
                 plan = build_plan_from_decision(query, decision)
+
+            if not plan.steps and decomposition_mode:
+                if request_id:
+                    log_event("batch_objective_planning_failed", request_id, reason="empty_plan")
+                sub_decisions = [
+                    classify_and_generate_query(objective, permission_ctx, chat_history)
+                    for objective in objectives
+                ]
+                cached_sub_decisions = sub_decisions
+                plan = build_plan_from_objectives(objectives, sub_decisions)
 
             levels = validate_plan(plan, max_steps=settings.PLANNER_MAX_STEPS)
 
@@ -247,6 +285,8 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
                 log_event("plan_invalid", request_id, error=str(exc))
         except Exception as exc:
             if request_id:
+                if decomposition_mode:
+                    log_event("batch_objective_planning_failed", request_id, reason=str(exc))
                 log_event("planner_error", request_id, error=str(exc))
 
     # ── Step 3B: Legacy multi-objective handling (fallback) ──
@@ -270,9 +310,13 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
                 objectives=objectives,
             )
 
-        sub_decisions: list[dict[str, Any]] = []
-        for objective in objectives:
-            sub_decisions.append(classify_and_generate_query(objective, permission_ctx, chat_history))
+        if cached_sub_decisions is not None and len(cached_sub_decisions) == len(objectives):
+            sub_decisions = cached_sub_decisions
+        else:
+            sub_decisions = [
+                classify_and_generate_query(objective, permission_ctx, chat_history)
+                for objective in objectives
+            ]
 
         yield {"type": "stage", "value": "multi_fetch"}
         subtask_jobs = [
@@ -368,6 +412,9 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
 
     # ── Step 4: Stream the formatted response token by token ──
     yield {"type": "stage", "value": "compose"}
+    if skipped_objectives_notes:
+        raw_data += "\n\n--- Skipped objectives (out of scope) ---\n" + "\n".join(skipped_objectives_notes)
+
     prompt = FORMAT_PROMPT.format(
         role=role,
         original_query=query,

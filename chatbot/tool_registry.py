@@ -44,8 +44,51 @@ class SqlToolAdapter:
 
 
 class VectorToolAdapter:
+    @staticmethod
+    def _derive_query_from_rows(rows: Any, field: str | None, fallback: str) -> str:
+        if not isinstance(rows, list) or not rows:
+            return fallback
+
+        candidates = [field] if field else []
+        candidates.extend([
+            "title",
+            "name",
+            "assignment_title",
+            "filename",
+            "file_name",
+            "subject_name",
+        ])
+
+        values: list[str] = []
+        for row in rows[:3]:
+            if not isinstance(row, dict):
+                continue
+            for key in candidates:
+                if not key:
+                    continue
+                val = row.get(key)
+                if val is not None and str(val).strip():
+                    values.append(str(val).strip())
+                    break
+
+        if values:
+            return " ".join(values)
+        return fallback
+
     def execute(self, context: dict[str, Any], resolved_inputs: dict[str, Any]) -> ToolResult:
         query = str(resolved_inputs.get("query", "")).strip()
+
+        if not query:
+            query_from_sql = resolved_inputs.get("query_from_sql")
+            if isinstance(query_from_sql, dict):
+                rows = query_from_sql.get("rows")
+                field = query_from_sql.get("field")
+                fallback = str(query_from_sql.get("fallback", "")).strip()
+                prefix = str(query_from_sql.get("prefix", "")).strip()
+
+                derived = self._derive_query_from_rows(rows, str(field) if field else None, fallback)
+                query = f"{prefix} {derived}".strip() if prefix else derived
+
         if not query:
             return ToolResult(status="failed", error="Missing query input for vector tool.")
 
