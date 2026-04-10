@@ -27,6 +27,37 @@ streaming_llm = OllamaLLM(model=settings.CHATBOT_MODEL, temperature=0.3, streami
 MAX_DECOMPOSE_OBJECTIVES = 4
 
 
+def _derive_vector_query_from_rows(
+        rows: Any,
+        field: str | None,
+        db_file_field: str | None,
+        fallback: str,
+        prefix: str = "",
+) -> str:
+    if isinstance(rows, list):
+        candidates: list[str] = []
+        if db_file_field:
+            candidates.append(db_file_field)
+        if field and field not in candidates:
+            candidates.append(field)
+        candidates.extend(["pdf_name", "attachment", "title", "name", "filename", "file_name"])
+
+        values: list[str] = []
+        for row in rows[:3]:
+            if not isinstance(row, dict):
+                continue
+            for key in candidates:
+                val = row.get(key)
+                if val is not None and str(val).strip():
+                    values.append(str(val).strip())
+                    break
+        if values:
+            base = " ".join(values)
+            return f"{prefix} {base}".strip() if prefix else base
+
+    return f"{prefix} {fallback}".strip() if prefix else fallback
+
+
 def _resolve_data_source_from_tools(tools: set[str]) -> str:
     if tools == {"sql"}:
         return "the school database"
@@ -186,6 +217,7 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
 
     # ── Step 3A: Generic planner execution path (feature-flagged) ──
     objectives = decision.get("objectives", [])
+    objective_items = decision.get("objective_items", [{"text": o} for o in objectives])
     decomposition_mode = bool(decision.get("decomposition_mode")) and len(objectives) > 1
     planner_succeeded = False
     cached_sub_decisions: list[dict[str, Any]] | None = None
@@ -196,9 +228,9 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
             yield {"type": "stage", "value": "planning"}
 
             if decomposition_mode:
-                candidate_objectives = objectives
-                if len(candidate_objectives) > MAX_DECOMPOSE_OBJECTIVES:
-                    candidate_objectives = candidate_objectives[:MAX_DECOMPOSE_OBJECTIVES]
+                candidate_objective_items = objective_items
+                if len(candidate_objective_items) > MAX_DECOMPOSE_OBJECTIVES:
+                    candidate_objective_items = candidate_objective_items[:MAX_DECOMPOSE_OBJECTIVES]
                     if request_id:
                         log_event(
                             "decomposition_truncated",
@@ -206,6 +238,7 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
                             max_objectives=MAX_DECOMPOSE_OBJECTIVES,
                             original_count=len(decision.get("objectives", [])),
                         )
+                candidate_objectives = [item.get("text", "").strip() for item in candidate_objective_items if item.get("text")]
 
                 if request_id:
                     log_event(
@@ -216,7 +249,7 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
 
                 sub_decisions = classify_objectives_batch(
                     query=query,
-                    objectives=candidate_objectives,
+                    objectives=candidate_objective_items,
                     permission_ctx=permission_ctx,
                     chat_history=chat_history,
                 )
@@ -374,14 +407,26 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
     elif not planner_succeeded and not decomposition_mode and decision["type"] == "both":
         yield {"type": "stage", "value": "sql_fetch"}
         sql_rows, doc_chunks = "", ""
+        vector_query = decision.get("search_phrase") or query
+        rows: list[dict] = []
 
         if decision.get("sql"):
             rows = execute_sql_query(decision["sql"], session, request_id=request_id, subtask_id="sql-main")
             sql_rows = json.dumps(rows, indent=2, default=str)
+            vector_query = _derive_vector_query_from_rows(
+                rows,
+                field=decision.get("vector_from_sql_field"),
+                db_file_field=decision.get("db_file_field"),
+                fallback=vector_query,
+                prefix=decision.get("vector_prefix") or "",
+            )
 
-        if decision.get("search_phrase"):
+        if vector_query:
             yield {"type": "stage", "value": "doc_fetch"}
-            doc_chunks = search_documents(decision["search_phrase"], request_id=request_id, subtask_id="doc-main")
+            doc_chunks = search_documents(vector_query, request_id=request_id, subtask_id="doc-main")
+
+        if isinstance(rows, list) and rows and isinstance(rows[0], dict) and rows[0].get("error"):
+            doc_chunks = "No assignment document details were retrieved due to SQL retrieval error."
 
         raw_data = f"--- Database ---\n{sql_rows}\n\n--- Documents ---\n{doc_chunks}"
         data_source = "the school database and uploaded documents"

@@ -117,22 +117,48 @@ def validate_plan(
 
 def build_plan_from_decision(objective: str, decision: dict[str, Any], prefix: str = "main") -> Plan:
     steps: list[PlanStep] = []
+    sql_step_id = f"{prefix}-sql"
+    has_sql_step = False
 
     if decision.get("type") in {"sql", "both"} and decision.get("sql"):
+        has_sql_step = True
         steps.append(
             PlanStep(
-                step_id=f"{prefix}-sql",
+                step_id=sql_step_id,
                 tool="sql",
                 inputs={"sql": decision["sql"], "objective": objective},
             )
         )
 
     if decision.get("type") in {"doc", "both"} and decision.get("search_phrase"):
+        search_phrase = decision.get("search_phrase") or objective
+        vector_from_sql_field = decision.get("vector_from_sql_field")
+        db_file_field = decision.get("db_file_field")
+
+        depends_on: list[str] = []
+        vector_inputs: dict[str, Any]
+        if has_sql_step and (vector_from_sql_field or db_file_field):
+            depends_on = [sql_step_id]
+            vector_inputs = {
+                "k": 4,
+                "query_from_sql": {
+                    "rows": {"ref": sql_step_id, "path": "payload"},
+                    "field": vector_from_sql_field,
+                    "db_file_field": db_file_field,
+                    "prefix": decision.get("vector_prefix") or "",
+                    "fallback": search_phrase,
+                },
+                "objective": objective,
+            }
+        else:
+            vector_inputs = {"query": search_phrase, "k": 4, "objective": objective}
+
         steps.append(
             PlanStep(
                 step_id=f"{prefix}-vector",
                 tool="vector",
-                inputs={"query": decision["search_phrase"], "k": 4, "objective": objective},
+                inputs=vector_inputs,
+                depends_on=depends_on,
             )
         )
 
@@ -159,16 +185,18 @@ def build_plan_from_objectives(objectives: list[str], decisions: list[dict[str, 
         if decision.get("type") in {"doc", "both"}:
             search_phrase = decision.get("search_phrase") or objective
             vector_from_sql_field = decision.get("vector_from_sql_field")
+            db_file_field = decision.get("db_file_field")
 
             depends_on: list[str] = []
             vector_inputs: dict[str, Any]
-            if vector_from_sql_field and any(s.step_id == sql_step_id for s in steps):
+            if (vector_from_sql_field or db_file_field) and any(s.step_id == sql_step_id for s in steps):
                 depends_on = [sql_step_id]
                 vector_inputs = {
                     "k": 4,
                     "query_from_sql": {
                         "rows": {"ref": sql_step_id, "path": "payload"},
                         "field": vector_from_sql_field,
+                        "db_file_field": db_file_field,
                         "prefix": decision.get("vector_prefix") or "",
                         "fallback": search_phrase,
                     },

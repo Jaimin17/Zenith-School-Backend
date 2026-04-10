@@ -45,12 +45,18 @@ class SqlToolAdapter:
 
 class VectorToolAdapter:
     @staticmethod
-    def _derive_query_from_rows(rows: Any, field: str | None, fallback: str) -> str:
+    def _derive_query_from_rows(rows: Any, field: str | None, db_file_field: str | None, fallback: str) -> str:
         if not isinstance(rows, list) or not rows:
             return fallback
 
-        candidates = [field] if field else []
+        candidates: list[str] = []
+        if db_file_field:
+            candidates.append(db_file_field)
+        if field and field not in candidates:
+            candidates.append(field)
         candidates.extend([
+            "pdf_name",
+            "attachment",
             "title",
             "name",
             "assignment_title",
@@ -83,10 +89,16 @@ class VectorToolAdapter:
             if isinstance(query_from_sql, dict):
                 rows = query_from_sql.get("rows")
                 field = query_from_sql.get("field")
+                db_file_field = query_from_sql.get("db_file_field")
                 fallback = str(query_from_sql.get("fallback", "")).strip()
                 prefix = str(query_from_sql.get("prefix", "")).strip()
 
-                derived = self._derive_query_from_rows(rows, str(field) if field else None, fallback)
+                derived = self._derive_query_from_rows(
+                    rows,
+                    str(field) if field else None,
+                    str(db_file_field) if db_file_field else None,
+                    fallback,
+                )
                 query = f"{prefix} {derived}".strip() if prefix else derived
 
         if not query:

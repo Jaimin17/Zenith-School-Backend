@@ -448,3 +448,17 @@ class JobApplications(SQLModel, table=True):
 
     is_reviewed: bool = Field(default=False, nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
+
+
+class ChatbotTelemetryLog(SQLModel, table=True):
+    __tablename__ = "chatbot_telemetry_log"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False, index=True)
+    request_id: str = Field(nullable=False, index=True)
+    event: str = Field(nullable=False, index=True)
+    level: str = Field(default="INFO", nullable=False)
+    source: str = Field(default="chatbot", nullable=False)
+    payload_json: dict = Field(sa_column=Column(JSON, nullable=False))
+    hash_key: str = Field(nullable=False, index=True)
+    is_delete: bool = Field(default=False, nullable=False)

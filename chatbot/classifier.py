@@ -7,6 +7,7 @@ from chatbot.schema_reference import (
 )
 import re
 import json
+from typing import Any
 
 from core.config import settings
 
@@ -27,6 +28,10 @@ _OUT_OF_SCOPE_HINTS = {
     "politics", "prime minister", "celebrity", "programming interview",
 }
 _MULTI_OBJECTIVE_JOINERS = re.compile(r"\b(and|also|plus|along with|as well as|compare)\b", re.IGNORECASE)
+_DOC_INTENT_HINTS = {
+    "summary", "summarize", "details", "detail", "explain", "describe",
+    "pdf", "document", "instructions", "guidelines", "rubric",
+}
 
 # ─────────────────────────────────────────────────────────────────
 # PROMPT 1: TYPE DECIDER  (~200 tokens)
@@ -53,6 +58,7 @@ BATCH_OBJECTIVE_PLANNER_PROMPT = PromptTemplate(
         input_variables=[
                 "query",
                 "objectives_json",
+        "objective_metadata_json",
                 "mandatory_filter",
                 "allowed",
                 "schema",
@@ -65,6 +71,7 @@ BATCH_OBJECTIVE_PLANNER_PROMPT = PromptTemplate(
 
         Input query: {query}
         Objectives (JSON array): {objectives_json}
+        Objective metadata (JSON array): {objective_metadata_json}
         previous history: {chat_history}
 
         MANDATORY SQL FILTER (must be included in every SQL when SQL is used):
@@ -88,6 +95,7 @@ BATCH_OBJECTIVE_PLANNER_PROMPT = PromptTemplate(
                 "sql": "<SELECT SQL or null>",
                 "search_phrase": "<document query phrase or null>",
                 "vector_from_sql_field": "<optional field name from SQL rows for dependent vector query>",
+                "db_file_field": "<optional database file-name field like pdf_name>",
                 "vector_prefix": "<optional prefix text for vector query>",
                 "reasoning": "<short reason>"
             }}
@@ -95,7 +103,35 @@ BATCH_OBJECTIVE_PLANNER_PROMPT = PromptTemplate(
 
         Dependency hint:
         - If objective needs SQL result first (example: latest assignment title, then fetch assignment details from docs),
-            set type='both', provide sql, and set vector_from_sql_field to the SQL column name to use.
+                        set type='both', provide sql, and set vector_from_sql_field to the SQL column name to use.
+                - If objective metadata says needs_docs=true, prefer type='both' (or 'doc' when SQL is unnecessary).
+        """,
+)
+
+
+OBJECTIVE_EXTRACTOR_PROMPT = PromptTemplate(
+        input_variables=["query", "chat_history"],
+        template="""\
+        You are extracting retrieval objectives for a school assistant.
+
+        Return JSON only (no markdown):
+        [
+            {
+                "text": "objective text",
+                "needs_docs": true,
+                "preferred_source": "sql|doc|both",
+                "dependency_hint": "sql_then_vector|independent"
+            }
+        ]
+
+        Rules:
+        - Max 4 objectives.
+        - Keep each objective short and actionable.
+        - If user asks summary/details for assignment/exam/policy, set needs_docs=true.
+        - If objective needs latest/filtered database record then document expansion, use dependency_hint='sql_then_vector'.
+
+        previous history: {chat_history}
+        Query: {query}
         """,
 )
 
@@ -262,6 +298,81 @@ def _decompose_query(query: str) -> list[str]:
     return [p.strip(" ,.") for p in parts if p.strip(" ,.")]
 
 
+def _default_file_field_for_objective(objective: str) -> str | None:
+    objective_l = objective.lower()
+    if "assignment" in objective_l:
+        return "pdf_name"
+    if any(word in objective_l for word in {"announcement", "notice", "circular"}):
+        return "attachment"
+    return None
+
+
+def _extract_objectives_via_llm(query: str, chat_history: list[dict]) -> list[dict[str, Any]]:
+    raw = llm.invoke(OBJECTIVE_EXTRACTOR_PROMPT.format(
+        query=query,
+        chat_history="\n".join(
+            f"{m['role'].upper()}: {m['content']}"
+            for m in chat_history[-4:]
+        ),
+    )).strip()
+
+    cleaned = re.sub(r"```(?:json)?\s*", "", raw, flags=re.IGNORECASE).replace("```", "").strip()
+    parsed = None
+    try:
+        parsed = json.loads(cleaned)
+    except Exception:
+        match = re.search(r"(\[.*\]|\{.*\})", cleaned, flags=re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(1))
+            except Exception:
+                parsed = None
+
+    items = parsed if isinstance(parsed, list) else []
+    normalized: list[dict[str, Any]] = []
+    for item in items[:4]:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        preferred_source = str(item.get("preferred_source", "sql")).strip().lower()
+        if preferred_source not in {"sql", "doc", "both"}:
+            preferred_source = "sql"
+
+        normalized.append({
+            "text": text,
+            "needs_docs": bool(item.get("needs_docs", False)),
+            "preferred_source": preferred_source,
+            "dependency_hint": str(item.get("dependency_hint", "independent")).strip().lower(),
+            "db_file_field": _default_file_field_for_objective(text),
+        })
+
+    return normalized
+
+
+def _build_objective_items(query: str, chat_history: list[dict]) -> list[dict[str, Any]]:
+    llm_items = _extract_objectives_via_llm(query, chat_history)
+    if llm_items:
+        return llm_items[:4]
+
+    fallback = _decompose_query(query)[:4]
+    query_words = set(re.findall(r"\b\w+\b", query.lower()))
+    query_needs_docs = bool(query_words.intersection(_DOC_INTENT_HINTS))
+    items: list[dict[str, Any]] = []
+    for obj in fallback:
+        obj_words = set(re.findall(r"\b\w+\b", obj.lower()))
+        needs_docs = query_needs_docs or bool(obj_words.intersection(_DOC_INTENT_HINTS))
+        items.append({
+            "text": obj,
+            "needs_docs": needs_docs,
+            "preferred_source": "both" if needs_docs else "sql",
+            "dependency_hint": "sql_then_vector" if needs_docs else "independent",
+            "db_file_field": _default_file_field_for_objective(obj),
+        })
+    return items
+
+
 # ─────────────────────────────────────────────────────────────────
 # STEP 1: Decide type
 # ─────────────────────────────────────────────────────────────────
@@ -357,7 +468,8 @@ def classify_and_generate_query(query: str, permission_ctx: dict, chat_history: 
     Returns:
         { type, sql, search_phrase, reasoning }
     """
-    objectives = _decompose_query(query)
+    objective_items = _build_objective_items(query, chat_history)
+    objectives = [item["text"] for item in objective_items]
     decomposition_mode = len(objectives) > 1
 
     if _is_out_of_scope(query):
@@ -368,9 +480,12 @@ def classify_and_generate_query(query: str, permission_ctx: dict, chat_history: 
             "reasoning": "type=out_of_scope | sql=no | doc=no",
             "decomposition_mode": decomposition_mode,
             "objectives": objectives,
+            "objective_items": objective_items,
         }
 
     query_type = _decide_type(query, chat_history)
+    if any(item.get("needs_docs") for item in objective_items) and query_type == "sql":
+        query_type = "both"
 
     sql = None
     search_phrase = None
@@ -384,13 +499,26 @@ def classify_and_generate_query(query: str, permission_ctx: dict, chat_history: 
     if query_type in ("doc", "both"):
         search_phrase = query
 
+    vector_from_sql_field = None
+    db_file_field = None
+    if query_type == "both":
+        db_file_field = next((item.get("db_file_field") for item in objective_items if item.get("db_file_field")), None)
+        if db_file_field:
+            vector_from_sql_field = db_file_field
+        else:
+            vector_from_sql_field = "title"
+
     return {
         "type": query_type,
         "sql": sql,
         "search_phrase": search_phrase,
+        "vector_from_sql_field": vector_from_sql_field,
+        "db_file_field": db_file_field,
+        "vector_prefix": "",
         "reasoning": f"type={query_type} | sql={'yes' if sql else 'no'} | doc={'yes' if search_phrase else 'no'}",
         "decomposition_mode": decomposition_mode,
         "objectives": objectives,
+        "objective_items": objective_items,
     }
 
 
@@ -421,12 +549,39 @@ def _normalize_sql_candidate(sql: str | None, permission_ctx: dict) -> str | Non
 
 def classify_objectives_batch(
         query: str,
-        objectives: list[str],
+        objectives: list[dict[str, Any]] | list[str],
         permission_ctx: dict,
         chat_history: list[dict],
 ) -> list[dict]:
     if not objectives:
         return []
+
+    objective_items: list[dict[str, Any]] = []
+    for item in objectives:
+        if isinstance(item, dict):
+            text = str(item.get("text", "")).strip()
+            if not text:
+                continue
+            objective_items.append({
+                "text": text,
+                "needs_docs": bool(item.get("needs_docs", False)),
+                "preferred_source": str(item.get("preferred_source", "sql")).strip().lower(),
+                "dependency_hint": str(item.get("dependency_hint", "independent")).strip().lower(),
+                "db_file_field": item.get("db_file_field") or _default_file_field_for_objective(text),
+            })
+        else:
+            text = str(item).strip()
+            if not text:
+                continue
+            objective_items.append({
+                "text": text,
+                "needs_docs": False,
+                "preferred_source": "sql",
+                "dependency_hint": "independent",
+                "db_file_field": _default_file_field_for_objective(text),
+            })
+
+    objective_texts = [item["text"] for item in objective_items]
 
     role = permission_ctx["role"]
     user_id = permission_ctx["user_id"]
@@ -435,7 +590,8 @@ def classify_objectives_batch(
 
     raw = llm.invoke(BATCH_OBJECTIVE_PLANNER_PROMPT.format(
         query=query,
-        objectives_json=json.dumps(objectives, ensure_ascii=True),
+        objectives_json=json.dumps(objective_texts, ensure_ascii=True),
+        objective_metadata_json=json.dumps(objective_items, ensure_ascii=True),
         mandatory_filter=mandatory_filter,
         allowed=", ".join(permission_ctx["allowed_tables"]),
         schema=DB_SCHEMA_COMPACT,
@@ -465,8 +621,9 @@ def classify_objectives_batch(
         items = []
 
     normalized: list[dict] = []
-    for i, objective in enumerate(objectives):
+    for i, objective in enumerate(objective_texts):
         item = items[i] if i < len(items) and isinstance(items[i], dict) else {}
+        objective_meta = objective_items[i] if i < len(objective_items) else {}
         decision_type = str(item.get("type", "doc")).strip().lower()
         if decision_type not in {"sql", "doc", "both", INTENT_OUT_OF_SCOPE}:
             decision_type = "doc"
@@ -475,14 +632,17 @@ def classify_objectives_batch(
         search_phrase = item.get("search_phrase") or objective
 
         if decision_type in {"sql", "both"} and not sql:
-            if decision_type == "sql":
-                decision_type = "doc"
-            else:
-                decision_type = "doc"
+            decision_type = "doc"
+
+        if objective_meta.get("needs_docs") and decision_type == "sql":
+            decision_type = "both"
 
         vector_from_sql_field = item.get("vector_from_sql_field")
+        db_file_field = item.get("db_file_field") or objective_meta.get("db_file_field")
         if decision_type != "both":
             vector_from_sql_field = None
+        elif not vector_from_sql_field:
+            vector_from_sql_field = db_file_field or "title"
 
         normalized.append({
             "objective": objective,
@@ -490,6 +650,7 @@ def classify_objectives_batch(
             "sql": sql,
             "search_phrase": search_phrase if decision_type in {"doc", "both"} else None,
             "vector_from_sql_field": vector_from_sql_field,
+            "db_file_field": db_file_field,
             "vector_prefix": item.get("vector_prefix") or "",
             "reasoning": item.get("reasoning") or "batch_objective_planner",
         })
