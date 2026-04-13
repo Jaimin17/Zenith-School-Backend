@@ -53,3 +53,6 @@ Thumbs.db
 # Optional: Ignore uploads/temp
 uploads/
 tmp/
+
+#Chroma db
+chroma_db/
