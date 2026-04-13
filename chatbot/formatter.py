@@ -1,9 +1,8 @@
-from langchain_ollama import OllamaLLM
 from langchain_core.prompts import PromptTemplate
 
-from core.config import settings
+from chatbot.llm_factory import create_llm
 
-llm = OllamaLLM(model=settings.CHATBOT_MODEL, temperature=0.3)
+llm = create_llm(temperature=0.3)
 
 FORMAT_PROMPT = PromptTemplate(
     input_variables=["role", "original_query", "raw_data", "data_source", "history_text"],

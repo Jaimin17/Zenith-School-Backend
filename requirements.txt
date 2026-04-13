@@ -16,6 +16,7 @@ multipart
 langchain
 langchain-community
 langchain-ollama
+langchain-openai
 chromadb
 pypdf
 langchain-chroma

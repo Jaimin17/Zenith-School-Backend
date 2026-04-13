@@ -1,17 +1,14 @@
-from langchain_ollama import OllamaLLM
 from langchain_core.prompts import PromptTemplate
 from chatbot.schema_reference import (
     DB_SCHEMA_COMPACT,
-    KEYWORD_TABLE_MAP,
-    DB_ONLY_TABLES,
 )
 import re
 import json
 from typing import Any
 
-from core.config import settings
+from chatbot.llm_factory import create_llm
 
-llm = OllamaLLM(model=settings.CHATBOT_MODEL, temperature=0)
+llm = create_llm(temperature=0)
 
 # Intent constants used by orchestrator and telemetry.
 INTENT_SCHOOL_DATA = "sql"
@@ -19,14 +16,6 @@ INTENT_SCHOOL_DOCS = "doc"
 INTENT_HYBRID = "both"
 INTENT_OUT_OF_SCOPE = "out_of_scope"
 
-_DOC_KEYWORDS = {
-    "policy", "policies", "rubric", "rubrics", "handbook", "guideline",
-    "instructions", "syllabus", "document", "pdf",
-}
-_OUT_OF_SCOPE_HINTS = {
-    "fifa", "cricket", "ipl", "bitcoin", "stock", "weather", "recipe", "movie",
-    "politics", "prime minister", "celebrity", "programming interview",
-}
 _MULTI_OBJECTIVE_JOINERS = re.compile(r"\b(and|also|plus|along with|as well as|compare)\b", re.IGNORECASE)
 _DOC_INTENT_HINTS = {
     "summary", "summarize", "details", "detail", "explain", "describe",
@@ -40,11 +29,26 @@ _DOC_INTENT_HINTS = {
 TYPE_DECIDER_PROMPT = PromptTemplate(
     input_variables=["query", "chat_history"],
     template="""\
-    School system query classifier. Reply with ONE word only: sql, doc, or both.
-    
-    sql  = live data: attendance, grades, results, schedule, announcements, events, exams, assignments
-    doc  = uploaded PDF content: assignment instructions, policy documents, rubrics, syllabi
-    both = needs both
+    You are a routing classifier for a school assistant pipeline.
+    Reply with ONE word only: sql, doc, both, or out_of_scope.
+
+    Pipeline overview:
+    - sql: Query structured school DB data (attendance, results, exams, assignments, announcements, events).
+    - doc: Query uploaded documents (instructions, rubric, policy, handbook, syllabus).
+    - both: Use SQL first to identify the exact target, then use docs for explanation/summary/details.
+    - out_of_scope: Greeting/small talk/non-school topics.
+
+    Decision rules:
+    - Choose both when user asks summary/details/explanation of a latest/specific announcement or assignment.
+    - Choose both when exact document target must be identified from DB first (latest, recent, current, specific subject).
+    - Choose doc only when the user directly asks for document content and target is already explicit.
+    - Choose sql only when answer is purely structured data and does not require document explanation.
+
+    Examples:
+    - "Show my attendance this month" -> sql
+    - "Open assignment rubric for Algebra Unit 3" -> doc
+    - "Give me summary of latest math assignment" -> both
+    - "Hello" -> out_of_scope
     
     previous history: {chat_history}
     
@@ -116,12 +120,12 @@ OBJECTIVE_EXTRACTOR_PROMPT = PromptTemplate(
 
         Return JSON only (no markdown):
         [
-            {
+            {{
                 "text": "objective text",
                 "needs_docs": true,
                 "preferred_source": "sql|doc|both",
                 "dependency_hint": "sql_then_vector|independent"
-            }
+            }}
         ]
 
         Rules:
@@ -257,7 +261,7 @@ def _build_mandatory_filter(role: str, user_id: str, extra: dict) -> str:
         )
 
     if role == "parent":
-        child_id = extra.get("child_id", "")
+        child_id = _resolve_parent_child_id(extra)
         if child_id:
             return (
                 f"Child's student_id = CAST('{child_id}' AS UUID)\n"
@@ -273,22 +277,54 @@ def _build_mandatory_filter(role: str, user_id: str, extra: dict) -> str:
     return "No mandatory filter. Show all relevant data unless query specifies a person/class."
 
 
-# ─────────────────────────────────────────────────────────────────
-# KEYWORD PRE-ROUTER — skips LLM for obvious DB queries
-# ─────────────────────────────────────────────────────────────────
-def _keyword_precheck(query: str) -> str | None:
-    words = re.findall(r"\b\w+\b", query.lower())
-    matched = {KEYWORD_TABLE_MAP[w] for w in words if w in KEYWORD_TABLE_MAP}
-    if matched and matched.issubset(DB_ONLY_TABLES):
-        return "sql"
-    return None
+def _looks_like_greeting(query: str) -> bool:
+    return bool(
+        re.match(
+            r"^\s*(hi|hello|hey|hii|hlo|good\s+morning|good\s+afternoon|good\s+evening)\b",
+            query.strip(),
+            re.IGNORECASE,
+        )
+    )
 
 
-def _is_out_of_scope(query: str) -> bool:
-    words = set(re.findall(r"\b\w+\b", query.lower()))
-    in_domain = bool(words.intersection(set(KEYWORD_TABLE_MAP.keys()) | _DOC_KEYWORDS))
-    out_scope_hit = bool(words.intersection(_OUT_OF_SCOPE_HINTS))
-    return out_scope_hit and not in_domain
+def _extract_user_name(permission_ctx: dict) -> str | None:
+    extra = permission_ctx.get("extra", {}) if isinstance(permission_ctx, dict) else {}
+    if not isinstance(extra, dict):
+        return None
+
+    display = str(extra.get("display_name", "")).strip()
+    if display:
+        return display
+
+    first = str(extra.get("first_name", "")).strip()
+    last = str(extra.get("last_name", "")).strip()
+    full = f"{first} {last}".strip()
+    return full or None
+
+
+def _assistant_scope_message_for_query(query: str, permission_ctx: dict) -> str:
+    name = _extract_user_name(permission_ctx)
+    if _looks_like_greeting(query):
+        if name:
+            return (
+                f"Hi {name}! I am your school assistant. "
+                "Ask me about attendance, results, assignments, exams, announcements, or school documents."
+            )
+        return (
+            "Hi! I am your school assistant. "
+            "Ask me about attendance, results, assignments, exams, announcements, or school documents."
+        )
+
+    if name:
+        return (
+            f"Sorry {name}, I can help with school-related questions only. "
+            "Please ask about attendance, results, assignments, exams, announcements, or school documents."
+        )
+
+    return (
+        "Sorry, I can help with school-related questions only. "
+        "Please ask about attendance, results, assignments, exams, announcements, or school documents."
+    )
 
 
 def _decompose_query(query: str) -> list[str]:
@@ -296,6 +332,61 @@ def _decompose_query(query: str) -> list[str]:
         return [query.strip()]
     parts = re.split(r"\b(?:and|also|plus|along with|as well as|compare)\b", query, flags=re.IGNORECASE)
     return [p.strip(" ,.") for p in parts if p.strip(" ,.")]
+
+
+def _resolve_parent_child_id(extra: dict) -> str:
+    if not isinstance(extra, dict):
+        return ""
+
+    child_id = str(extra.get("child_id", "")).strip()
+    if child_id and child_id.lower() not in {"undefined", "null"}:
+        return child_id
+
+    student_ids = extra.get("student_ids")
+    if isinstance(student_ids, dict):
+        for val in student_ids.values():
+            sid = str(val).strip()
+            if sid and sid.lower() not in {"undefined", "null"}:
+                return sid
+
+    return ""
+
+
+def _derive_single_objective_type(objective_item: dict[str, Any], query: str) -> str | None:
+    preferred_source = str(objective_item.get("preferred_source", "")).strip().lower()
+    dependency_hint = str(objective_item.get("dependency_hint", "")).strip().lower()
+    needs_docs = bool(objective_item.get("needs_docs", False))
+
+    if dependency_hint == "sql_then_vector":
+        return "both"
+
+    if preferred_source == "both":
+        return "both"
+
+    if preferred_source == "sql" and needs_docs:
+        return "both"
+
+    if preferred_source in {"sql", "doc"}:
+        return preferred_source
+
+    if needs_docs or _requires_sql_then_docs([objective_item], query):
+        return "both"
+
+    return None
+
+
+def _requires_sql_then_docs(objective_items: list[dict[str, Any]], query: str) -> bool:
+    q = query.lower()
+    query_has_latest_hint = any(word in q for word in {"latest", "recent", "last", "current"})
+    query_wants_explanation = any(word in q for word in {"summary", "summarize", "details", "detail", "explain"})
+
+    for item in objective_items:
+        if str(item.get("dependency_hint", "")).strip().lower() == "sql_then_vector":
+            return True
+        if str(item.get("preferred_source", "")).strip().lower() == "both":
+            return True
+
+    return query_has_latest_hint and query_wants_explanation
 
 
 def _default_file_field_for_objective(objective: str) -> str | None:
@@ -377,19 +468,14 @@ def _build_objective_items(query: str, chat_history: list[dict]) -> list[dict[st
 # STEP 1: Decide type
 # ─────────────────────────────────────────────────────────────────
 def _decide_type(query: str, chat_history: list[dict]) -> str:
-    precheck = _keyword_precheck(query)
-    if precheck:
-        print(f"🔀 Keyword router → {precheck}")
-        return precheck
-
     raw = llm.invoke(TYPE_DECIDER_PROMPT.format(
         query=query,
         chat_history="\n".join(
             f"{m['role'].upper()}: {m['content']}"
             for m in chat_history[-4:]  # last 4 messages only (token budget)
         ))).strip().lower()
-    first = raw.split()[0] if raw.split() else "sql"
-    result = first if first in {"sql", "doc", "both"} else "sql"
+    first = raw.split()[0] if raw.split() else INTENT_OUT_OF_SCOPE
+    result = first if first in {"sql", "doc", "both", INTENT_OUT_OF_SCOPE} else INTENT_OUT_OF_SCOPE
     print(f"🤖 LLM type router → '{result}' (raw='{raw}')")
     return result
 
@@ -399,7 +485,7 @@ def _validate_sql_for_role(sql: str, role: str, user_id: str, extra: dict) -> bo
     if role == "student":
         return user_id.lower() in sql.lower()
     if role == "parent":
-        child_id = extra.get("child_id", "")
+        child_id = _resolve_parent_child_id(extra)
         return child_id.lower() in sql.lower() if child_id else True
     if role == "teacher":
         return user_id.lower() in sql.lower()
@@ -442,7 +528,7 @@ def _generate_sql(query: str, permission_ctx: dict, chat_history: list[dict]) ->
     danger = re.search(
         r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b", raw, re.IGNORECASE
     )
-    if danger:
+    if danger:  
         print(f"🚫 Blocked dangerous keyword: {danger.group()}")
         return None
 
@@ -472,18 +558,37 @@ def classify_and_generate_query(query: str, permission_ctx: dict, chat_history: 
     objectives = [item["text"] for item in objective_items]
     decomposition_mode = len(objectives) > 1
 
-    if _is_out_of_scope(query):
+    if decomposition_mode:
+        return {
+            "type": None,
+            "sql": None,
+            "search_phrase": None,
+            "reasoning": "type=decomposition_pending | sql=no | doc=no",
+            "decomposition_mode": decomposition_mode,
+            "objectives": objectives,
+            "objective_items": objective_items,
+        }
+
+    single_objective = objective_items[0] if objective_items else {}
+    query_type = _derive_single_objective_type(single_objective, query)
+    if not query_type:
+        query_type = _decide_type(query, chat_history)
+
+    if query_type == INTENT_OUT_OF_SCOPE:
         return {
             "type": INTENT_OUT_OF_SCOPE,
             "sql": None,
             "search_phrase": None,
+            "assistant_message": _assistant_scope_message_for_query(query, permission_ctx),
             "reasoning": "type=out_of_scope | sql=no | doc=no",
             "decomposition_mode": decomposition_mode,
             "objectives": objectives,
             "objective_items": objective_items,
         }
 
-    query_type = _decide_type(query, chat_history)
+    if _requires_sql_then_docs(objective_items, query):
+        query_type = "both"
+
     if any(item.get("needs_docs") for item in objective_items) and query_type == "sql":
         query_type = "both"
 

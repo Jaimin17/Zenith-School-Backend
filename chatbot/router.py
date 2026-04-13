@@ -28,17 +28,27 @@ async def chat(request: ChatRequest, current_user: AllUser, session: SessionDep)
             # Send a start event so frontend knows stream began
             yield f"data: {json.dumps({'type': 'start', 'request_id': request_id})}\n\n"
 
+            base_extra = {
+                "first_name": getattr(user, "first_name", "") or "",
+                "last_name": getattr(user, "last_name", "") or "",
+                "display_name": " ".join(
+                    part for part in [getattr(user, "first_name", ""), getattr(user, "last_name", "")] if part
+                ).strip(),
+            }
+
             if role == UserRole.PARENT:
                 student_ids = {}
                 for i, student in enumerate(user.students):
                     student_ids[i] = student.id
+
+                extra_payload = {**base_extra, "student_ids": student_ids}
 
                 # Stream tokens from the agent
                 async for token in run_agent_stream(
                         query=request.query,
                         role=role,
                         user_id=user.id,
-                        extra=student_ids,
+                        extra=extra_payload,
                         session=session,
                         chat_history=request.chat_history,
                         request_id=request_id,
@@ -56,6 +66,7 @@ async def chat(request: ChatRequest, current_user: AllUser, session: SessionDep)
                         query=request.query,
                         role=role,
                         user_id=user.id,
+                    extra=base_extra,
                         session=session,
                         chat_history=request.chat_history,
                         request_id=request_id,

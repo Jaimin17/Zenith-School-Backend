@@ -2,7 +2,12 @@ from sqlmodel import Session
 import asyncio
 
 from chatbot.permissions import get_user_permission_context
-from chatbot.classifier import classify_and_generate_query, classify_objectives_batch, INTENT_OUT_OF_SCOPE
+from chatbot.classifier import (
+    classify_and_generate_query,
+    classify_objectives_batch,
+    INTENT_OUT_OF_SCOPE,
+    _assistant_scope_message_for_query,
+)
 from chatbot.sql_executor import execute_sql_query
 from chatbot.vector_search import search_documents
 from chatbot.formatter import FORMAT_PROMPT
@@ -14,16 +19,16 @@ from chatbot.planner import (
     validate_plan,
 )
 from chatbot.tool_registry import create_default_tool_registry
-from langchain_ollama import OllamaLLM
 import uuid, json
 from typing import AsyncGenerator, Any
 import time
 
 from core.config import settings
 from chatbot.telemetry import log_event
+from chatbot.llm_factory import create_llm
 
 # Separate LLM instance for streaming (formatter step only)
-streaming_llm = OllamaLLM(model=settings.CHATBOT_MODEL, temperature=0.3, streaming=True)
+streaming_llm = create_llm(temperature=0.3, streaming=True)
 MAX_DECOMPOSE_OBJECTIVES = 4
 
 
@@ -222,6 +227,9 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
     planner_succeeded = False
     cached_sub_decisions: list[dict[str, Any]] | None = None
     skipped_objectives_notes: list[str] = []
+    all_objectives_out_of_scope = False
+
+    print(f"Decomposition mode: {decomposition_mode}, Objectives: {objectives}")  # helpful for debugging
 
     if settings.ENABLE_GENERIC_PLANNER and decision.get("type") != INTENT_OUT_OF_SCOPE:
         try:
@@ -252,6 +260,9 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
                     objectives=candidate_objective_items,
                     permission_ctx=permission_ctx,
                     chat_history=chat_history,
+                )
+                all_objectives_out_of_scope = bool(sub_decisions) and all(
+                    dec.get("type") == INTENT_OUT_OF_SCOPE for dec in sub_decisions
                 )
 
                 cached_sub_decisions = sub_decisions
@@ -309,6 +320,17 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
                     planner_succeeded=planner_succeeded,
                 )
             if completed == 0:
+                if decomposition_mode and all_objectives_out_of_scope:
+                    yield {"type": "stage", "value": "out_of_scope"}
+                    yield _assistant_scope_message_for_query(query, permission_ctx)
+                    if request_id:
+                        log_event(
+                            "request_finished",
+                            request_id,
+                            route="decomposition_out_of_scope",
+                            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                        )
+                    return
                 yield "I could not retrieve data for this request. Please refine the question with class, subject, or timeframe."
                 if request_id:
                     log_event("request_failed", request_id, reason="planner_empty")
@@ -350,6 +372,21 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
                 classify_and_generate_query(objective, permission_ctx, chat_history)
                 for objective in objectives
             ]
+
+        all_objectives_out_of_scope = bool(sub_decisions) and all(
+            dec.get("type") == INTENT_OUT_OF_SCOPE for dec in sub_decisions
+        )
+        if all_objectives_out_of_scope:
+            yield {"type": "stage", "value": "out_of_scope"}
+            yield _assistant_scope_message_for_query(query, permission_ctx)
+            if request_id:
+                log_event(
+                    "request_finished",
+                    request_id,
+                    route="decomposition_out_of_scope",
+                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                )
+            return
 
         yield {"type": "stage", "value": "multi_fetch"}
         subtask_jobs = [
@@ -433,10 +470,9 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
 
     elif not planner_succeeded and not decomposition_mode and decision["type"] == INTENT_OUT_OF_SCOPE:
         yield {"type": "stage", "value": "out_of_scope"}
-        message = (
-            "I can help with school data and documents such as assignments, attendance, results, "
-            "schedule, announcements, events, and policies. "
-            "Try asking: 'Show my latest assignments' or 'Summarize this month's attendance.'"
+        message = decision.get("assistant_message") or (
+            "I am your school assistant. "
+            "Please ask about attendance, results, assignments, exams, announcements, or school documents."
         )
         if request_id:
             log_event("request_finished", request_id, route="out_of_scope", duration_ms=round((time.perf_counter() - started) * 1000, 2))

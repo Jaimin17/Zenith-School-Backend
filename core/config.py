@@ -74,7 +74,11 @@ class Settings(BaseSettings):
     ALLOWED_PDF_EXTENSIONS: str = ".pdf"
     MAX_PDF_FILE_SIZE: int = 10 * 1024 * 1024
 
-    CHATBOT_MODEL: str
+    CHATBOT_MODEL: str = "llama3.1"
+    LLM_PROVIDER: Literal["ollama", "openrouter"] = "ollama"
+    LLM_MODEL: str | None = None
+    LLM_API_KEY: str | None = None
+    LLM_BASE_URL: str | None = None
     ENABLE_GENERIC_PLANNER: bool = False
     PLANNER_MAX_STEPS: int = 5
     PLANNER_STEP_TIMEOUT_MS: int = 6000
@@ -111,6 +115,20 @@ class Settings(BaseSettings):
     def EMAIL_RE(self) -> re.Pattern:
         return re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 
+    @property
+    def effective_llm_model(self) -> str:
+        if self.LLM_MODEL:
+            return self.LLM_MODEL
+        return self.CHATBOT_MODEL
+
+    @property
+    def effective_llm_base_url(self) -> str | None:
+        if self.LLM_BASE_URL:
+            return self.LLM_BASE_URL
+        if self.LLM_PROVIDER == "openrouter":
+            return "https://openrouter.ai/api/v1"
+        return None
+
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
 
@@ -134,6 +152,9 @@ class Settings(BaseSettings):
         self._check_default_secret(
             "FIRST_SUPERUSER_PASSWORD", self.FIRST_SUPERUSER_PASSWORD
         )
+
+        if self.LLM_PROVIDER == "openrouter" and not self.LLM_API_KEY:
+            raise ValueError("LLM_API_KEY is required when LLM_PROVIDER is 'openrouter'.")
 
         self.UPLOAD_DIR_DP.mkdir(parents=True, exist_ok=True)
 

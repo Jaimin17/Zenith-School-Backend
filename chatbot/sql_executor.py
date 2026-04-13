@@ -38,9 +38,13 @@ def execute_sql_query(sql: str, session: SessionDep, request_id: str | None = No
 
     try:
         session.exec(text("SET statement_timeout = '5s'"))
-        sql_with_limit = sql.rstrip(";") + f" LIMIT {MAX_ROWS};"
+        if sql.count("LIMIT") == 0:
+            sql_with_limit = sql.rstrip(";") + f" LIMIT {MAX_ROWS};"
+        else:
+            sql_with_limit = sql
         result = session.exec(text(sql_with_limit))
         rows = result.fetchall()
+        print("Result metadata:", rows)
         columns = result.keys()
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
         if request_id:
