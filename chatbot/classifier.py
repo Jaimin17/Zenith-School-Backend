@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 from chatbot.llm_factory import create_llm
+from core.config import settings
 
 llm = create_llm(temperature=0)
 
@@ -21,6 +22,11 @@ _DOC_INTENT_HINTS = {
     "summary", "summarize", "details", "detail", "explain", "describe",
     "pdf", "document", "instructions", "guidelines", "rubric",
 }
+
+
+def _debug_print(message: str) -> None:
+    if settings.CHATBOT_DEBUG_PRINTS:
+        print(message)
 
 # ─────────────────────────────────────────────────────────────────
 # PROMPT 1: TYPE DECIDER  (~200 tokens)
@@ -218,7 +224,7 @@ def _enforce_ilike(sql: str) -> str:
 
     def replace_lower_lower(m: re.Match) -> str:
         col, val = m.group(1), m.group(2)
-        print(f"🔧 Fixed LOWER()=LOWER(): {m.group(0)} → {col} ILIKE '%{val}%'")
+        _debug_print(f"🔧 Fixed LOWER()=LOWER(): {m.group(0)} -> {col} ILIKE '%{val}%'")
         return f"{col} ILIKE '%{val}%'"
 
     sql = pattern1.sub(replace_lower_lower, sql)
@@ -232,7 +238,7 @@ def _enforce_ilike(sql: str) -> str:
     def replace_exact_eq(m: re.Match) -> str:
         col, val = m.group(1).strip(), m.group(2)
         if col.lower() in {c.lower() for c in _FUZZY_COLUMNS}:
-            print(f"🔧 Fixed exact match: {m.group(0)} → {col} ILIKE '%{val}%'")
+            _debug_print(f"🔧 Fixed exact match: {m.group(0)} -> {col} ILIKE '%{val}%'")
             return f"{col} ILIKE '%{val}%'"
         return m.group(0)  # leave non-text columns (UUIDs, booleans) untouched
 
@@ -476,7 +482,7 @@ def _decide_type(query: str, chat_history: list[dict]) -> str:
         ))).strip().lower()
     first = raw.split()[0] if raw.split() else INTENT_OUT_OF_SCOPE
     result = first if first in {"sql", "doc", "both", INTENT_OUT_OF_SCOPE} else INTENT_OUT_OF_SCOPE
-    print(f"🤖 LLM type router → '{result}' (raw='{raw}')")
+    _debug_print(f"🤖 LLM type router -> '{result}' (raw='{raw}')")
     return result
 
 
@@ -490,6 +496,32 @@ def _validate_sql_for_role(sql: str, role: str, user_id: str, extra: dict) -> bo
     if role == "teacher":
         return user_id.lower() in sql.lower()
     return True  # admin: no restriction
+
+
+def _inject_role_ids(sql: str, role: str, user_id: str, extra: dict) -> str:
+    if not sql:
+        return sql
+
+    replacements: dict[str, str] = {}
+    user_id_val = str(user_id).strip()
+    if user_id_val:
+        if role == "student":
+            replacements["STUDENT_ID"] = user_id_val
+        elif role == "teacher":
+            replacements["TEACHER_ID"] = user_id_val
+        elif role == "parent":
+            replacements["PARENT_ID"] = user_id_val
+
+    child_id = _resolve_parent_child_id(extra)
+    if child_id:
+        replacements["CHILD_ID"] = child_id
+        replacements["STUDENT_ID"] = child_id
+
+    patched = sql
+    for placeholder, value in replacements.items():
+        patched = re.sub(rf"\b{placeholder}\b", value, patched, flags=re.IGNORECASE)
+
+    return patched
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -521,7 +553,7 @@ def _generate_sql(query: str, permission_ctx: dict, chat_history: list[dict]) ->
 
     # Must start with SELECT
     if not raw.upper().lstrip().startswith("SELECT"):
-        print(f"⚠️ SQL generator bad output: '{raw[:120]}'")
+        _debug_print(f"⚠️ SQL generator bad output: '{raw[:120]}'")
         return None
 
     # Block dangerous mutation keywords
@@ -529,17 +561,18 @@ def _generate_sql(query: str, permission_ctx: dict, chat_history: list[dict]) ->
         r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b", raw, re.IGNORECASE
     )
     if danger:  
-        print(f"🚫 Blocked dangerous keyword: {danger.group()}")
+        _debug_print(f"🚫 Blocked dangerous keyword: {danger.group()}")
         return None
 
     # Python-level safety net: fix LOWER()= or exact = to ILIKE
     raw = _enforce_ilike(raw)
+    raw = _inject_role_ids(raw, role, user_id, extra)
 
     if not _validate_sql_for_role(raw, role, user_id, extra):
-        print("🚫 Security: mandatory filter missing from generated SQL")
+        _debug_print("🚫 Security: mandatory filter missing from generated SQL")
         return None
 
-    print(f"📝 SQL:\n{raw}\n")
+    _debug_print(f"📝 SQL:\n{raw}\n")
     return raw
 
 
@@ -554,6 +587,19 @@ def classify_and_generate_query(query: str, permission_ctx: dict, chat_history: 
     Returns:
         { type, sql, search_phrase, reasoning }
     """
+    if _looks_like_greeting(query):
+        normalized = query.strip()
+        return {
+            "type": INTENT_OUT_OF_SCOPE,
+            "sql": None,
+            "search_phrase": None,
+            "assistant_message": _assistant_scope_message_for_query(query, permission_ctx),
+            "reasoning": "type=out_of_scope | greeting_detected | sql=no | doc=no",
+            "decomposition_mode": False,
+            "objectives": [normalized] if normalized else [],
+            "objective_items": [{"text": normalized}] if normalized else [],
+        }
+
     objective_items = _build_objective_items(query, chat_history)
     objectives = [item["text"] for item in objective_items]
     decomposition_mode = len(objectives) > 1
@@ -598,7 +644,7 @@ def classify_and_generate_query(query: str, permission_ctx: dict, chat_history: 
     if query_type in ("sql", "both"):
         sql = _generate_sql(query, permission_ctx, chat_history)
         if not sql:
-            print("⚠️ SQL failed → falling back to doc")
+            _debug_print("⚠️ SQL failed -> falling back to doc")
             query_type = "doc"
 
     if query_type in ("doc", "both"):
@@ -646,6 +692,7 @@ def _normalize_sql_candidate(sql: str | None, permission_ctx: dict) -> str | Non
     role = permission_ctx["role"]
     user_id = permission_ctx["user_id"]
     extra = permission_ctx.get("extra", {})
+    raw = _inject_role_ids(raw, role, user_id, extra)
     if not _validate_sql_for_role(raw, role, user_id, extra):
         return None
 

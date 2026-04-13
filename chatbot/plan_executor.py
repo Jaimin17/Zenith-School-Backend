@@ -27,6 +27,16 @@ class ExecutionReport:
     records: list[StepExecutionRecord]
 
 
+def _preview_step_output(payload: Any, max_len: int = 220) -> str:
+    if payload is None:
+        return ""
+    text = str(payload)
+    text = " ".join(text.split())
+    if len(text) > max_len:
+        return text[: max_len - 3] + "..."
+    return text
+
+
 def _resolve_input_value(value: Any, results: dict[str, StepExecutionRecord]) -> Any:
     if isinstance(value, dict):
         if "ref" in value:
@@ -121,6 +131,7 @@ async def _run_step(
             tool=step.tool,
             duration_ms=duration_ms,
             dependency_count=len(step.depends_on),
+            output_preview=_preview_step_output(result.payload),
             error=result.error,
         )
 

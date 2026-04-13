@@ -32,6 +32,11 @@ streaming_llm = create_llm(temperature=0.3, streaming=True)
 MAX_DECOMPOSE_OBJECTIVES = 4
 
 
+def _debug_print(message: str) -> None:
+    if settings.CHATBOT_DEBUG_PRINTS:
+        print(message)
+
+
 def _derive_vector_query_from_rows(
         rows: Any,
         field: str | None,
@@ -205,11 +210,11 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
     # ── Step 2: LLM classifies query and generates SQL or search phrase ──
     # This step does NOT stream — we need the full decision before proceeding
     decision = classify_and_generate_query(query, permission_ctx, chat_history)
+    _debug_print(f"🧠 LLM Decision: {decision.get('reasoning')}")
 
-    print(f"🧠 LLM Decision: {decision['reasoning']}")  # helpful for debugging
     if request_id:
         log_event(
-            "classifier_decision",
+            "llm_decision",
             request_id,
             decision_type=decision.get("type"),
             decomposition_mode=decision.get("decomposition_mode", False),
@@ -228,8 +233,7 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
     cached_sub_decisions: list[dict[str, Any]] | None = None
     skipped_objectives_notes: list[str] = []
     all_objectives_out_of_scope = False
-
-    print(f"Decomposition mode: {decomposition_mode}, Objectives: {objectives}")  # helpful for debugging
+    _debug_print(f"Decomposition mode: {decomposition_mode}, Objectives: {objectives}")
 
     if settings.ENABLE_GENERIC_PLANNER and decision.get("type") != INTENT_OUT_OF_SCOPE:
         try:
@@ -509,8 +513,21 @@ async def run_agent_stream(session: Session, query: str, role: str, user_id: uui
     )
 
     # .stream() yields tokens one by one as LLM generates them
+    response_parts: list[str] = []
     for token in streaming_llm.stream(prompt):
+        response_parts.append(str(token))
         yield token
+
+    final_response_text = "".join(response_parts).strip()
+    if request_id:
+        log_event(
+            "llm_response",
+            request_id,
+            route=decision.get("type"),
+            source=data_source,
+            response_chars=len(final_response_text),
+            response_preview=final_response_text[:300],
+        )
 
     if request_id:
         log_event(

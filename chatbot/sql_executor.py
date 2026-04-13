@@ -26,11 +26,20 @@ def execute_sql_query(sql: str, session: SessionDep, request_id: str | None = No
     """
     started = time.perf_counter()
 
+    if request_id:
+        log_event(
+            "sql_started",
+            request_id,
+            subtask_id=subtask_id,
+            sql_hash=stable_hash(sql),
+        )
+
     if not is_safe_query(sql):
         if request_id:
             log_event(
                 "sql_blocked",
                 request_id,
+                level="WARNING",
                 subtask_id=subtask_id,
                 sql_hash=stable_hash(sql),
             )
@@ -44,7 +53,6 @@ def execute_sql_query(sql: str, session: SessionDep, request_id: str | None = No
             sql_with_limit = sql
         result = session.exec(text(sql_with_limit))
         rows = result.fetchall()
-        print("Result metadata:", rows)
         columns = result.keys()
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
         if request_id:
@@ -64,6 +72,7 @@ def execute_sql_query(sql: str, session: SessionDep, request_id: str | None = No
             log_event(
                 "sql_error",
                 request_id,
+                level="ERROR",
                 subtask_id=subtask_id,
                 sql_hash=stable_hash(sql),
                 duration_ms=duration_ms,

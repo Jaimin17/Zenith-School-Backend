@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     LLM_API_KEY: str | None = None
     LLM_BASE_URL: str | None = None
     ENABLE_GENERIC_PLANNER: bool = False
+    CHATBOT_DEBUG_PRINTS: bool = False
     PLANNER_MAX_STEPS: int = 5
     PLANNER_STEP_TIMEOUT_MS: int = 6000
     PLANNER_GLOBAL_TIMEOUT_MS: int = 20000

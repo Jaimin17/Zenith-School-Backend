@@ -30,6 +30,8 @@ FORMAT_PROMPT = PromptTemplate(
                     1) **Quick Summary**
                     2) **Key Details**
                     3) *Next helpful note* (italic)
+                - If the user query contains an exact PDF filename (ends with .pdf), answer using only that file's retrieved content.
+                - When exact filename is requested, do NOT compare with or mention other documents.
                 - If any requested part is missing, clearly state what is available and what is missing.
                 - Be caring and user-friendly, but professional and concise.
 
