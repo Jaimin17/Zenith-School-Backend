@@ -462,3 +462,29 @@ class ChatbotTelemetryLog(SQLModel, table=True):
     payload_json: dict = Field(sa_column=Column(JSON, nullable=False))
     hash_key: str = Field(nullable=False, index=True)
     is_delete: bool = Field(default=False, nullable=False)
+
+
+class ChatSession(SQLModel, table=True):
+    __tablename__ = "chat_session"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    owner_id: uuid.UUID = Field(nullable=False, index=True)
+    owner_role: str = Field(nullable=False, index=True)
+    title: str = Field(default="New Chat", nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False, index=True)
+    updated_at: datetime = Field(default_factory=datetime.now, nullable=False, index=True)
+    is_delete: bool = Field(default=False, nullable=False)
+
+    messages: List["ChatMessage"] = Relationship(back_populates="session")
+
+
+class ChatMessage(SQLModel, table=True):
+    __tablename__ = "chat_message"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    session_id: uuid.UUID = Field(nullable=False, foreign_key="chat_session.id", index=True)
+    role: str = Field(nullable=False)
+    content: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False, index=True)
+
+    session: "ChatSession" = Relationship(back_populates="messages")

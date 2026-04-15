@@ -90,7 +90,7 @@ BATCH_OBJECTIVE_PLANNER_PROMPT = PromptTemplate(
         SQL safety rules:
         - Only SELECT.
         - No INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE.
-        - Every table needs is_delete=false.
+        - Add is_delete=false only for tables that have an is_delete column (do not add it to holiday).
         - Use only these tables: {allowed}
         - Prefer ILIKE '%term%' for text matching.
 
@@ -163,7 +163,7 @@ SQL_GENERATOR_PROMPT = PromptTemplate(
     
     Rules:
     - Only SELECT. No INSERT/UPDATE/DELETE/DROP.
-    - Every table needs AND is_delete=false.
+    - Add AND is_delete=false only for tables that have an is_delete column (do not add it to holiday).
     - Always quote: "class".
     - Only use these tables: {allowed}
     - Use templates from schema when available.

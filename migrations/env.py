@@ -9,7 +9,7 @@ import os
 from models import (
     User, Admin, Parent, Grade, Teacher, Subject, Event, Announcement,
     Class, Student, Lesson, Exam, Assignment, Result, Attendance,
-    BlacklistToken, TeacherSubjectLink
+    BlacklistToken, TeacherSubjectLink, ChatSession, ChatMessage
 )
 
 os.environ["ALEMBIC_RUNNING"] = "1"

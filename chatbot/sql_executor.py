@@ -67,6 +67,7 @@ def execute_sql_query(sql: str, session: SessionDep, request_id: str | None = No
         # Convert to list of dicts so it's readable
         return [dict(zip(columns, row)) for row in rows]
     except Exception as e:
+        session.rollback()
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
         if request_id:
             log_event(

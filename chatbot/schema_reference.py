@@ -1,5 +1,5 @@
 DB_SCHEMA_COMPACT = """\
-TABLES — PostgreSQL. Rules: always is_delete=false. Quote "class". CAST('id' AS UUID) for UUIDs. Only SELECT.
+TABLES — PostgreSQL. Rules: use is_delete=false for tables that have is_delete. holiday table has NO is_delete column. Quote "class". CAST('id' AS UUID) for UUIDs. Only SELECT.
 
 STRING MATCHING RULE (critical):
 NEVER use = for text columns like subject.name, exam.title, class.name, teacher name etc.
@@ -164,6 +164,18 @@ WHERE (class_id = (SELECT class_id FROM student WHERE id = CAST('STUDENT_ID' AS 
    OR class_id IS NULL)
   AND is_delete = false
 ORDER BY start_time DESC;
+
+[holidays for current year]
+SELECT date, name, description
+FROM holiday
+WHERE EXTRACT(YEAR FROM date) = EXTRACT(YEAR FROM CURRENT_DATE)
+ORDER BY date ASC;
+
+[holidays by specific year]
+SELECT date, name, description
+FROM holiday
+WHERE EXTRACT(YEAR FROM date) = YEAR_NUMBER
+ORDER BY date ASC;
 
 [active academic year]
 SELECT id, year_label, start_date, end_date

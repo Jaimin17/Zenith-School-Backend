@@ -19,7 +19,41 @@ class PaginatedBaseResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str
+    session_id: Optional[uuid.UUID] = None
     chat_history: list[dict] = []  # [{"role": "user", "content": "..."}, ...]
+
+
+class ChatSessionCreateResponse(BaseModel):
+    session_id: uuid.UUID
+    created_at: datetime
+
+
+class ChatMessageResponse(BaseModel):
+    id: uuid.UUID
+    role: str
+    content: str
+    created_at: datetime
+
+
+class ChatSessionResponse(BaseModel):
+    id: uuid.UUID
+    title: str
+    message_count: int
+    last_message_preview: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaginatedChatSessionResponse(PaginatedBaseResponse):
+    data: list[ChatSessionResponse]
+
+
+class ChatSessionDetailResponse(BaseModel):
+    id: uuid.UUID
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    messages: list[ChatMessageResponse]
 
 
 class UserBase(BaseModel):
