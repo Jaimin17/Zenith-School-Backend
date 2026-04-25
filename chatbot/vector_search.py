@@ -2,6 +2,13 @@ from chatbot.doc_ingester import get_vectorstore
 import time
 import re
 
+from chatbot.ollama_health import (
+    is_ollama_connection_error,
+    is_ollama_reachable,
+    offline_message,
+    resolve_ollama_host_port,
+    unreachable_message,
+)
 from chatbot.telemetry import log_event, stable_hash
 
 
@@ -20,22 +27,59 @@ def search_documents(search_phrase: str, k: int = 4, request_id: str | None = No
     """
 
     started = time.perf_counter()
+    if not is_ollama_reachable():
+        host, port = resolve_ollama_host_port()
+        message = offline_message()
+        if request_id:
+            log_event(
+                "vector_unavailable",
+                request_id,
+                level="WARNING",
+                subtask_id=subtask_id,
+                query_hash=stable_hash(search_phrase),
+                k=k,
+                ollama_host=host,
+                ollama_port=port,
+            )
+        raise RuntimeError(message)
+
     vectorstore = get_vectorstore()
     exact_doc_name = _extract_exact_pdf_name(search_phrase)
     results = []
 
-    if exact_doc_name:
-        try:
+    try:
+        if exact_doc_name:
+            try:
+                results = vectorstore.similarity_search(
+                    search_phrase,
+                    k=max(k, 8),
+                    filter={"filename": exact_doc_name},
+                )
+            except Exception:
+                results = vectorstore.similarity_search(search_phrase, k=max(k, 8))
+                results = [doc for doc in results if str(doc.metadata.get("filename", "")).lower() == exact_doc_name.lower()]
+        else:
             results = vectorstore.similarity_search(
                 search_phrase,
-                k=max(k, 8),
-                filter={"filename": exact_doc_name},
+                k=k,
             )
-        except Exception:
-            results = vectorstore.similarity_search(search_phrase, k=max(k, 8))
-            results = [doc for doc in results if str(doc.metadata.get("filename", "")).lower() == exact_doc_name.lower()]
-    else:
-        results = vectorstore.similarity_search(search_phrase, k=k)
+    except Exception as exc:
+        if is_ollama_connection_error(exc):
+            host, port = resolve_ollama_host_port()
+            message = unreachable_message()
+            if request_id:
+                log_event(
+                    "vector_unavailable",
+                    request_id,
+                    level="WARNING",
+                    subtask_id=subtask_id,
+                    query_hash=stable_hash(search_phrase),
+                    k=k,
+                    ollama_host=host,
+                    ollama_port=port,
+                )
+            raise RuntimeError(message) from exc
+        raise
 
     if not results:
         if request_id:

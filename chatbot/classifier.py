@@ -90,7 +90,7 @@ BATCH_OBJECTIVE_PLANNER_PROMPT = PromptTemplate(
         SQL safety rules:
         - Only SELECT.
         - No INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE.
-        - Add is_delete=false only for tables that have an is_delete column (do not add it to holiday).
+        - Every table needs is_delete=false.
         - Use only these tables: {allowed}
         - Prefer ILIKE '%term%' for text matching.
 
@@ -103,6 +103,7 @@ BATCH_OBJECTIVE_PLANNER_PROMPT = PromptTemplate(
                 "objective": "<objective text>",
                 "type": "sql|doc|both|out_of_scope",
                 "sql": "<SELECT SQL or null>",
+                "depends_on_objective": "<optional prior objective reference like obj-1>",
                 "search_phrase": "<document query phrase or null>",
                 "vector_from_sql_field": "<optional field name from SQL rows for dependent vector query>",
                 "db_file_field": "<optional database file-name field like pdf_name>",
@@ -163,7 +164,7 @@ SQL_GENERATOR_PROMPT = PromptTemplate(
     
     Rules:
     - Only SELECT. No INSERT/UPDATE/DELETE/DROP.
-    - Add AND is_delete=false only for tables that have an is_delete column (do not add it to holiday).
+    - Every table needs AND is_delete=false.
     - Always quote: "class".
     - Only use these tables: {allowed}
     - Use templates from schema when available.
@@ -204,6 +205,8 @@ _FUZZY_COLUMNS = {
     "t.first_name", "t.last_name",
     "teacher.first_name", "teacher.last_name",
 }
+
+_LEGACY_ROLE_PLACEHOLDERS = {"STUDENT_ID", "TEACHER_ID", "PARENT_ID", "CHILD_ID"}
 
 
 def _enforce_ilike(sql: str) -> str:
@@ -519,9 +522,114 @@ def _inject_role_ids(sql: str, role: str, user_id: str, extra: dict) -> str:
 
     patched = sql
     for placeholder, value in replacements.items():
-        patched = re.sub(rf"\b{placeholder}\b", value, patched, flags=re.IGNORECASE)
+        # Replace only placeholder token forms; avoid touching real identifiers
+        # such as student_id / teacher_id column names.
+        patched = re.sub(
+            rf"CAST\(\s*'?\{{?\s*{re.escape(placeholder)}\s*\}}?'?\s+AS\s+UUID\s*\)",
+            f"CAST('{value}' AS UUID)",
+            patched,
+            flags=re.IGNORECASE,
+        )
+        patched = re.sub(
+            rf"'\{{?\s*{re.escape(placeholder)}\s*\}}?'",
+            f"'{value}'",
+            patched,
+            flags=re.IGNORECASE,
+        )
+        patched = re.sub(
+            rf"\{{\s*{re.escape(placeholder)}\s*\}}",
+            value,
+            patched,
+            flags=re.IGNORECASE,
+        )
+        patched = re.sub(
+            rf"(?<![A-Za-z0-9_.]){re.escape(placeholder)}(?![A-Za-z0-9_])",
+            value,
+            patched,
+        )
 
     return patched
+
+
+def _extract_teacher_name_hint(query: str, chat_history: list[dict]) -> str | None:
+    def _from_text(text: str) -> str | None:
+        cleaned = text.replace("’", "'")
+        patterns = [
+            r"\bteacher\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\b",
+            r"\bteacher\s+([a-zA-Z]+)'s\b",
+        ]
+        for pattern in patterns:
+            m = re.search(pattern, cleaned, flags=re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
+        return None
+
+    direct = _from_text(query)
+    if direct:
+        return direct
+
+    for msg in reversed(chat_history[-8:]):
+        if str(msg.get("role", "")).lower() != "user":
+            continue
+        content = str(msg.get("content", "")).strip()
+        if not content:
+            continue
+        hinted = _from_text(content)
+        if hinted:
+            return hinted
+
+    return None
+
+
+def _replace_teacher_id_token_with_name_subquery(sql: str, teacher_name_hint: str | None) -> str:
+    if not teacher_name_hint:
+        return sql
+
+    escaped_name = teacher_name_hint.replace("'", "''").strip()
+    if not escaped_name:
+        return sql
+
+    subquery = (
+        "(SELECT t.id FROM teacher t "
+        "WHERE t.is_delete = false "
+        "AND ("
+        f"(t.first_name || ' ' || t.last_name) ILIKE '%{escaped_name}%' "
+        f"OR t.first_name ILIKE '%{escaped_name}%' "
+        f"OR t.last_name ILIKE '%{escaped_name}%'"
+        ") LIMIT 1)"
+    )
+
+    # Replace legacy teacher placeholder token variants while avoiding identifier fragments
+    # such as l.teacher_id.
+    patched = re.sub(
+        r"CAST\(\s*'?\{?\s*TEACHER_ID\s*\}?'?\s+AS\s+UUID\s*\)",
+        subquery,
+        sql,
+        flags=re.IGNORECASE,
+    )
+    patched = re.sub(r"'\{?\s*TEACHER_ID\s*\}?'", subquery, patched, flags=re.IGNORECASE)
+    patched = re.sub(r"\{\s*TEACHER_ID\s*\}", subquery, patched, flags=re.IGNORECASE)
+    patched = re.sub(r"(?<!\.)\bTEACHER_ID\b", subquery, patched, flags=re.IGNORECASE)
+    return patched
+
+
+def _has_unresolved_legacy_role_placeholders(sql: str) -> bool:
+    for token in _LEGACY_ROLE_PLACEHOLDERS:
+        token_esc = re.escape(token)
+        # Detect placeholder token literals only, not schema identifiers like student_id.
+        if re.search(
+            rf"CAST\(\s*'?\{{?\s*{token_esc}\s*\}}?'?\s+AS\s+UUID\s*\)",
+            sql,
+            flags=re.IGNORECASE,
+        ):
+            return True
+        if re.search(rf"'\{{?\s*{token_esc}\s*\}}?'", sql, flags=re.IGNORECASE):
+            return True
+        if re.search(rf"\{{\s*{token_esc}\s*\}}", sql, flags=re.IGNORECASE):
+            return True
+        if re.search(rf"(?<![A-Za-z0-9_.]){token_esc}(?![A-Za-z0-9_])", sql):
+            return True
+    return False
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -567,6 +675,14 @@ def _generate_sql(query: str, permission_ctx: dict, chat_history: list[dict]) ->
     # Python-level safety net: fix LOWER()= or exact = to ILIKE
     raw = _enforce_ilike(raw)
     raw = _inject_role_ids(raw, role, user_id, extra)
+
+    if _has_unresolved_legacy_role_placeholders(raw):
+        teacher_name_hint = _extract_teacher_name_hint(query, chat_history)
+        raw = _replace_teacher_id_token_with_name_subquery(raw, teacher_name_hint)
+
+    if _has_unresolved_legacy_role_placeholders(raw):
+        _debug_print("⚠️ SQL has unresolved role placeholder tokens after recovery")
+        return None
 
     if not _validate_sql_for_role(raw, role, user_id, extra):
         _debug_print("🚫 Security: mandatory filter missing from generated SQL")
@@ -693,6 +809,8 @@ def _normalize_sql_candidate(sql: str | None, permission_ctx: dict) -> str | Non
     user_id = permission_ctx["user_id"]
     extra = permission_ctx.get("extra", {})
     raw = _inject_role_ids(raw, role, user_id, extra)
+    if _has_unresolved_legacy_role_placeholders(raw):
+        return None
     if not _validate_sql_for_role(raw, role, user_id, extra):
         return None
 
@@ -789,6 +907,13 @@ def classify_objectives_batch(
         if objective_meta.get("needs_docs") and decision_type == "sql":
             decision_type = "both"
 
+        if (
+            decision_type == "both"
+            and not objective_meta.get("needs_docs")
+            and sql
+        ):
+            decision_type = "sql"
+
         vector_from_sql_field = item.get("vector_from_sql_field")
         db_file_field = item.get("db_file_field") or objective_meta.get("db_file_field")
         if decision_type != "both":
@@ -800,6 +925,8 @@ def classify_objectives_batch(
             "objective": objective,
             "type": decision_type,
             "sql": sql,
+            "depends_on_objective": item.get("depends_on_objective"),
+            "needs_docs": bool(objective_meta.get("needs_docs", False)),
             "search_phrase": search_phrase if decision_type in {"doc", "both"} else None,
             "vector_from_sql_field": vector_from_sql_field,
             "db_file_field": db_file_field,
