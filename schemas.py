@@ -20,6 +20,7 @@ class PaginatedBaseResponse(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     session_id: Optional[uuid.UUID] = None
+    selected_academic_year_id: Optional[uuid.UUID] = None
     chat_history: list[dict] = []  # [{"role": "user", "content": "..."}, ...]
 
 
@@ -991,6 +992,11 @@ class SeedStudentsResponse(SQLModel):
     skipped: int
 
 
+class SeedTeacherClassResponse(SQLModel):
+    created: int
+    skipped: int
+
+
 # ===================== Student Class History Schemas =====================
 
 class StudentClassHistoryRead(SQLModel):
@@ -1109,7 +1115,7 @@ class HolidayRead(SQLModel):
 
 class HolidayUpdate(SQLModel):
     id: uuid.UUID
-    date: Optional[date] = None
+    date: Optional["date"] = None
     name: Optional[str] = None
     description: Optional[str] = None
 

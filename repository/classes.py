@@ -7,7 +7,8 @@ from sqlalchemy import Select, func
 from sqlmodel import Session, select
 
 from core.config import settings
-from models import Class, Teacher, Grade, Lesson, Student, Event
+from models import Class, Teacher, Grade, Lesson, Student, Event, TeacherClassHistory
+from repository.academicYear import getActiveAcademicYear
 from schemas import ClassSave, ClassUpdateBase, PaginatedClassResponse
 
 
@@ -21,7 +22,7 @@ def addSearchOption(query: Select, search: str):
     return query
 
 
-def getAllClassesIsDeleteFalse(session: Session, search: str, page: int):
+def getAllClassesIsDeleteFalse(session: Session, search: str, page: int, academic_year_id: Optional[uuid.UUID] = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     count_query = (
@@ -42,6 +43,44 @@ def getAllClassesIsDeleteFalse(session: Session, search: str, page: int):
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_classes = session.exec(query).all()
+
+    # (No per-teacher fallback here; admin class listing returns all classes. Assignment override happens below.)
+    is_current_year = (academic_year_id == getActiveAcademicYear(session))
+
+    # If academic year provided, attach assigned teacher for that year (history -> lessons -> supervisor)
+    if academic_year_id and not is_current_year:
+        active_year = getActiveAcademicYear(session)
+        for c in all_classes:
+            # Try TeacherClassHistory
+            assigned = session.exec(
+                select(Teacher)
+                .join(TeacherClassHistory, TeacherClassHistory.teacher_id == Teacher.id)
+                .where(
+                    TeacherClassHistory.class_id == c.id,
+                    TeacherClassHistory.academic_year_id == academic_year_id,
+                    Teacher.is_delete == False,
+                )
+            ).first()
+
+            # Fallback for active year: lesson-based or supervisor
+            if not assigned and active_year and active_year.id == academic_year_id:
+                assigned = session.exec(
+                    select(Teacher)
+                    .join(Lesson, Lesson.teacher_id == Teacher.id)
+                    .where(
+                        Lesson.class_id == c.id,
+                        Lesson.academic_year_id == academic_year_id,
+                        Teacher.is_delete == False,
+                    )
+                ).first()
+
+            if not assigned and active_year and active_year.id == academic_year_id and c.supervisor_id:
+                assigned = session.exec(
+                    select(Teacher).where(Teacher.id == c.supervisor_id, Teacher.is_delete == False)
+                ).first()
+
+            # override supervisor field in response to reflect assignment for the selected year
+            c.supervisor = assigned
 
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1)
 
@@ -70,38 +109,75 @@ def getAllClassesIsDeleteFalseAtOnce(session: Session):
     return all_classes
 
 
-def countAllClassOfTheTeacher(teacherId: uuid.UUID, session: Session):
-    query = (
-        select(func.count())
-        .select_from(Class)
-        .where(Class.supervisor_id == teacherId, Class.is_delete == False)
-    )
+def countAllClassOfTheTeacher(teacherId: uuid.UUID, session: Session, academic_year_id: uuid.UUID = None):
+    if academic_year_id:
+        query = (
+            select(func.count(TeacherClassHistory.class_id.distinct()))
+            .where(
+                TeacherClassHistory.teacher_id == teacherId,
+                TeacherClassHistory.academic_year_id == academic_year_id,
+            )
+        )
+    else:
+        query = (
+            select(func.count())
+            .select_from(Class)
+            .where(Class.supervisor_id == teacherId, Class.is_delete == False)
+        )
 
     total_classes = session.exec(query).one()
     return total_classes
 
 
-def getAllClassOfTeacherAndIsDeleteFalse(supervisorId: uuid.UUID, session: Session, search: str, page: int):
+def getAllClassOfTeacherAndIsDeleteFalse(
+    supervisorId: uuid.UUID,
+    session: Session,
+    search: str,
+    page: int,
+    academic_year_id: uuid.UUID = None,
+):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    count_query = (
-        select(func.count(Class.id.distinct()))
-        .where(
-            Class.supervisor_id == supervisorId,
-            Class.is_delete == False
+    if academic_year_id:
+        count_query = (
+            select(func.count(Class.id.distinct()))
+            .join(TeacherClassHistory, TeacherClassHistory.class_id == Class.id)
+            .where(
+                TeacherClassHistory.teacher_id == supervisorId,
+                TeacherClassHistory.academic_year_id == academic_year_id,
+                Class.is_delete == False,
+            )
         )
-    )
+    else:
+        count_query = (
+            select(func.count(Class.id.distinct()))
+            .where(
+                Class.supervisor_id == supervisorId,
+                Class.is_delete == False
+            )
+        )
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
-    query = (
-        select(Class)
-        .where(
-            Class.supervisor_id == supervisorId,
-            Class.is_delete == False,
+    if academic_year_id:
+        query = (
+            select(Class)
+            .join(TeacherClassHistory, TeacherClassHistory.class_id == Class.id)
+            .where(
+                TeacherClassHistory.teacher_id == supervisorId,
+                TeacherClassHistory.academic_year_id == academic_year_id,
+                Class.is_delete == False,
+            )
         )
-    )
+    else:
+        query = (
+            select(Class)
+            .where(
+                Class.supervisor_id == supervisorId,
+                Class.is_delete == False,
+            )
+        )
 
     query = query.order_by(func.lower(Class.name))
 
@@ -109,6 +185,10 @@ def getAllClassOfTeacherAndIsDeleteFalse(supervisorId: uuid.UUID, session: Sessi
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_classes = session.exec(query).all()
+
+    # If we used fallback for active year, adjust total_count to match returned results
+    if academic_year_id and total_count == 0 and all_classes:
+        total_count = len(all_classes)
 
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1)
 

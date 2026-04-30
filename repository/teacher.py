@@ -11,7 +11,8 @@ import os
 from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
 from core.security import get_password_hash
-from models import Teacher, Lesson, Subject, Class
+from models import Teacher, Lesson, Subject, Class, TeacherClassHistory
+from repository.academicYear import getActiveAcademicYear
 from schemas import PaginatedTeacherResponse, updatePasswordModel
 
 
@@ -33,39 +34,181 @@ def countTeacher(session: Session):
     ).first()
 
 
-def getAllTeachersIsDeleteFalse(session: Session, search: str, page: int):
+def _attach_year_scoped_data(
+    teachers: List[Teacher],
+    academic_year_id: Optional[uuid.UUID],
+    session: Session,
+) -> List[Teacher]:
+    if not academic_year_id:
+        return teachers
+
+    for teacher in teachers:
+        classes = session.exec(
+            select(Class)
+            .join(TeacherClassHistory, TeacherClassHistory.class_id == Class.id)
+            .where(
+                TeacherClassHistory.teacher_id == teacher.id,
+                TeacherClassHistory.academic_year_id == academic_year_id,
+                Class.is_delete == False,
+            )
+            .order_by(Class.name)
+        ).all()
+
+        # Fallback for active year: if no history rows exist for this year, derive from lessons or current supervisor
+        if not classes:
+            active_year = getActiveAcademicYear(session)
+            if active_year and active_year.id == academic_year_id:
+                # from lessons (distinct classes)
+                lesson_classes = session.exec(
+                    select(Class)
+                    .join(Lesson, Lesson.class_id == Class.id)
+                    .where(
+                        Lesson.teacher_id == teacher.id,
+                        Lesson.academic_year_id == academic_year_id,
+                        Class.is_delete == False,
+                    )
+                    .distinct()
+                ).all()
+
+                # from supervisor assignment
+                supervisor_classes = session.exec(
+                    select(Class).where(
+                        Class.supervisor_id == teacher.id,
+                        Class.is_delete == False,
+                    )
+                ).all()
+
+                # merge unique classes preserving ordering by name
+                class_map = {c.id: c for c in lesson_classes}
+                for c in supervisor_classes:
+                    class_map.setdefault(c.id, c)
+
+                classes = sorted(class_map.values(), key=lambda c: (c.name or ""))
+
+        lessons = session.exec(
+            select(Lesson).where(
+                Lesson.teacher_id == teacher.id,
+                Lesson.academic_year_id == academic_year_id,
+                Lesson.is_delete == False,
+            )
+        ).all()
+
+        subjects: List[Subject] = []
+        seen_subjects = set()
+        for lesson in lessons:
+            if lesson.subject and lesson.subject.id not in seen_subjects:
+                subjects.append(lesson.subject)
+                seen_subjects.add(lesson.subject.id)
+
+        teacher.classes = classes
+        teacher.lessons = lessons
+        teacher.subjects = subjects
+
+    return teachers
+
+
+def _resolve_year_scope(
+    academic_year_id: Optional[uuid.UUID],
+    session: Session,
+) -> tuple[Optional[uuid.UUID], Optional[uuid.UUID]]:
+    if not academic_year_id:
+        return None, None
+
+    active_year = getActiveAcademicYear(session)
+    if active_year and active_year.id == academic_year_id:
+        # Show all teachers for the active year, but keep year-scoped data attached.
+        return None, academic_year_id
+
+    return academic_year_id, academic_year_id
+
+
+def getAllTeachersIsDeleteFalse(
+    session: Session,
+    search: str,
+    page: int,
+    academic_year_id: Optional[uuid.UUID] = None,
+):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    query = (
-        select(Teacher)
-        .where(Teacher.is_delete == False)
-    )
+    filter_year_id, attach_year_id = _resolve_year_scope(academic_year_id, session)
 
-    query = query.order_by(func.lower(Teacher.username))
+    if filter_year_id:
+        query = (
+            select(Teacher)
+            .join(TeacherClassHistory, TeacherClassHistory.teacher_id == Teacher.id)
+            .where(
+                Teacher.is_delete == False,
+                TeacherClassHistory.academic_year_id == filter_year_id,
+            )
+            .distinct()
+        )
+    else:
+        query = (
+            select(Teacher)
+            .where(Teacher.is_delete == False)
+        )
+
 
     query = addSearchOption(query, search)
 
+    if filter_year_id:
+        query = query.order_by(Teacher.username)
+    else:
+        query = query.order_by(func.lower(Teacher.username))
+
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     active_teachers = session.exec(query).all()
-    return active_teachers
+    return _attach_year_scoped_data(active_teachers, attach_year_id, session)
 
 
-def getAllTeachersListIsDeleteFalse(session: Session):
-    query = (
-        select(Teacher)
-        .where(Teacher.is_delete == False)
-    )
+def getAllTeachersListIsDeleteFalse(session: Session, academic_year_id: Optional[uuid.UUID] = None):
+    filter_year_id, attach_year_id = _resolve_year_scope(academic_year_id, session)
 
-    query = query.order_by(func.lower(Teacher.username))
+    if filter_year_id:
+        query = (
+            select(Teacher)
+            .join(TeacherClassHistory, TeacherClassHistory.teacher_id == Teacher.id)
+            .where(
+                Teacher.is_delete == False,
+                TeacherClassHistory.academic_year_id == filter_year_id,
+            )
+            .distinct()
+        )
+    else:
+        query = (
+            select(Teacher)
+            .where(Teacher.is_delete == False)
+        )
+
+    if filter_year_id:
+        query = query.order_by(Teacher.username)
+    else:
+        query = query.order_by(func.lower(Teacher.username))
     active_teachers = session.exec(query).all()
-    return active_teachers
+    return _attach_year_scoped_data(active_teachers, attach_year_id, session)
 
 
-def getTotalTeachersCount(session: Session, search: str = None) -> int:
-    query = (
-        select(func.count(Teacher.id))
-        .where(Teacher.is_delete == False)
-    )
+def getTotalTeachersCount(
+    session: Session,
+    search: str = None,
+    academic_year_id: Optional[uuid.UUID] = None,
+) -> int:
+    filter_year_id, _ = _resolve_year_scope(academic_year_id, session)
+
+    if filter_year_id:
+        query = (
+            select(func.count(func.distinct(Teacher.id)))
+            .join(TeacherClassHistory, TeacherClassHistory.teacher_id == Teacher.id)
+            .where(
+                Teacher.is_delete == False,
+                TeacherClassHistory.academic_year_id == filter_year_id,
+            )
+        )
+    else:
+        query = (
+            select(func.count(Teacher.id))
+            .where(Teacher.is_delete == False)
+        )
 
     # Add search if provided
     query = addSearchOption(query, search)
@@ -74,36 +217,65 @@ def getTotalTeachersCount(session: Session, search: str = None) -> int:
     return total_count
 
 
-def getAllTeachersOfClassAndIsDeleteFalse(classId: uuid.UUID, session: Session, search: str, page: int):
+def getAllTeachersOfClassAndIsDeleteFalse(
+    classId: uuid.UUID,
+    session: Session,
+    search: str,
+    page: int,
+    academic_year_id: uuid.UUID = None,
+):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    count_query = (
-        select(func.count(Teacher.id.distinct()))
-        .join(
-            Lesson,
-            onclause=(Lesson.teacher_id == Teacher.id)
+    if academic_year_id:
+        count_query = (
+            select(func.count(Teacher.id.distinct()))
+            .join(TeacherClassHistory, TeacherClassHistory.teacher_id == Teacher.id)
+            .where(
+                TeacherClassHistory.class_id == classId,
+                TeacherClassHistory.academic_year_id == academic_year_id,
+                Teacher.is_delete == False,
+            )
         )
-        .where(
-            Lesson.class_id == classId,
-            Teacher.is_delete == False,
+    else:
+        count_query = (
+            select(func.count(Teacher.id.distinct()))
+            .join(
+                Lesson,
+                onclause=(Lesson.teacher_id == Teacher.id)
+            )
+            .where(
+                Lesson.class_id == classId,
+                Teacher.is_delete == False,
+            )
         )
-    )
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
-    query = (
-        select(Teacher)
-        .join(
-            Lesson,
-            onclause=(Lesson.teacher_id == Teacher.id)
+    if academic_year_id:
+        query = (
+            select(Teacher)
+            .join(TeacherClassHistory, TeacherClassHistory.teacher_id == Teacher.id)
+            .where(
+                TeacherClassHistory.class_id == classId,
+                TeacherClassHistory.academic_year_id == academic_year_id,
+                Teacher.is_delete == False,
+            )
+            .distinct()
         )
-        .where(
-            Lesson.class_id == classId,
-            Teacher.is_delete == False,
+    else:
+        query = (
+            select(Teacher)
+            .join(
+                Lesson,
+                onclause=(Lesson.teacher_id == Teacher.id)
+            )
+            .where(
+                Lesson.class_id == classId,
+                Teacher.is_delete == False,
+            )
+            .distinct()  # Explicitly add distinct to get unique teachers
         )
-        .distinct()  # Explicitly add distinct to get unique teachers
-    )
 
     query = addSearchOption(query, search)
 
@@ -112,6 +284,8 @@ def getAllTeachersOfClassAndIsDeleteFalse(classId: uuid.UUID, session: Session, 
 
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     results = session.exec(query).all()
+
+    results = _attach_year_scoped_data(results, academic_year_id, session)
 
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
 
@@ -136,6 +310,16 @@ def findTeacherById(teacherId: uuid.UUID, session: Session):
         raise HTTPException(status_code=404, detail="No teacher found with provided ID.")
 
     return teacher
+
+
+def findTeacherByIdYearScoped(
+    teacherId: uuid.UUID,
+    session: Session,
+    academic_year_id: Optional[uuid.UUID] = None,
+):
+    teacher = findTeacherById(teacherId, session)
+    _, attach_year_id = _resolve_year_scope(academic_year_id, session)
+    return _attach_year_scoped_data([teacher], attach_year_id, session)[0]
 
 
 async def teacherSaveWithImage(teacher_data: dict, img: Optional[UploadFile], session: Session):
@@ -391,6 +575,23 @@ def teacherSoftDeleteWithLessonAndClassAndSubject(id: uuid.UUID, session: Sessio
 
     if currentTeacher is None:
         raise HTTPException(status_code=404, detail="No teacher found with the provided ID.")
+
+    active_year = getActiveAcademicYear(session)
+    if active_year:
+        active_year_assignments = session.exec(
+            select(TeacherClassHistory).where(
+                TeacherClassHistory.teacher_id == id,
+                TeacherClassHistory.academic_year_id == active_year.id,
+            )
+        ).all()
+        if active_year_assignments:
+            return {
+                "id": str(currentTeacher.id),
+                "message": "Teacher cannot be deleted while assigned to one or more classes in the active academic year.",
+                "subject_affected": 0,
+                "lesson_affected": 0,
+                "class_affected": len(active_year_assignments),
+            }
 
     class_query = (
         select(Class)

@@ -15,12 +15,14 @@ from repository.academicYear import (
     getActiveAcademicYear, updateAcademicYear,
 )
 from repository.studentClassHistory import getStudentFullHistory, seedStudentsToAcademicYear
+from repository.teacherClassHistory import seedTeacherClassHistoryToAcademicYear
 from schemas import (
     AcademicYearBase,
     AcademicYearCreate,
     PaginatedAcademicYearResponse,
     StudentHistoryResponse, AcademicYearUpdate,
     SeedStudentsResponse,
+    SeedTeacherClassResponse,
 )
 
 router = APIRouter(prefix="/academic-years")
@@ -91,3 +93,10 @@ def seedStudents(year_id: uuid.UUID, current_user: AdminUser, session: SessionDe
     """Bulk-create StudentClassHistory records for all active students in this academic year.
     Idempotent — students already enrolled are skipped."""
     return seedStudentsToAcademicYear(year_id, session)
+
+
+@router.post("/{year_id}/seed-teacher-classes", response_model=SeedTeacherClassResponse)
+def seedTeacherClasses(year_id: uuid.UUID, current_user: AdminUser, session: SessionDep):
+    """Bulk-create TeacherClassHistory records for this academic year.
+    Idempotent — already copied teacher/class assignments are skipped."""
+    return seedTeacherClassHistoryToAcademicYear(year_id, session)

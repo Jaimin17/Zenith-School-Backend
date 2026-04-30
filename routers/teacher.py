@@ -2,14 +2,15 @@ import uuid
 from datetime import date, datetime
 from typing import List, Optional, Union
 from starlette.datastructures import UploadFile as StarletteUploadFile
-from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
+from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends, Request
 
 from core.config import settings
 from deps import CurrentUser, TeacherOrAdminUser, AdminUser, AllUser, UserRole
 from core.database import SessionDep
 from models import UserSex
+from repository.academicYear import ensureSelectedAcademicYearIsMutable
 from repository.teacher import getAllTeachersIsDeleteFalse, getAllTeachersOfClassAndIsDeleteFalse, countTeacher, \
-    findTeacherById, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject, teacherSaveWithImage, \
+    findTeacherByIdYearScoped, TeacherUpdate, teacherSoftDeleteWithLessonAndClassAndSubject, teacherSaveWithImage, \
     getTotalTeachersCount, getAllTeachersListIsDeleteFalse, updateTeacherPassword
 from schemas import TeacherRead, SaveResponse, TeacherDeleteResponse, PaginatedTeacherResponse, TeacherBase, \
     updatePasswordModel
@@ -25,10 +26,16 @@ def register(current_user: AdminUser, session: SessionDep):
 
 
 @router.get("/getAll", response_model=PaginatedTeacherResponse)
-def getAllTeachers(current_user: TeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
-    all_teachers = getAllTeachersIsDeleteFalse(session, search, page)
+def getAllTeachers(
+    current_user: TeacherOrAdminUser,
+    session: SessionDep,
+    search: str = None,
+    page: int = 1,
+    academic_year_id: Optional[uuid.UUID] = None,
+):
+    all_teachers = getAllTeachersIsDeleteFalse(session, search, page, academic_year_id)
 
-    total_count = getTotalTeachersCount(session, search)
+    total_count = getTotalTeachersCount(session, search, academic_year_id)
 
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
     has_next = page < total_pages
@@ -44,22 +51,37 @@ def getAllTeachers(current_user: TeacherOrAdminUser, session: SessionDep, search
 
 
 @router.get("/getFullList", response_model=List[TeacherRead])
-def getFullTeacherList(current_user: AllUser, session: SessionDep):
-    all_teachers = getAllTeachersListIsDeleteFalse(session)
+def getFullTeacherList(
+    current_user: AllUser,
+    session: SessionDep,
+    academic_year_id: Optional[uuid.UUID] = None,
+):
+    all_teachers = getAllTeachersListIsDeleteFalse(session, academic_year_id)
 
     return all_teachers
 
 
 @router.get("/{classId}", response_model=PaginatedTeacherResponse)
-def getTeacherByClassId(classId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
-                        page: int = 1):
-    all_teachers = getAllTeachersOfClassAndIsDeleteFalse(classId, session, search, page)
+def getTeacherByClassId(
+    classId: uuid.UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+    search: str = None,
+    page: int = 1,
+    academic_year_id: uuid.UUID = None,
+):
+    all_teachers = getAllTeachersOfClassAndIsDeleteFalse(classId, session, search, page, academic_year_id)
     return all_teachers
 
 
 @router.get("/get/{teacherId}", response_model=TeacherRead)
-def getTeacherById(teacherId: uuid.UUID, current_user: AdminUser, session: SessionDep):
-    teacher = findTeacherById(teacherId, session)
+def getTeacherById(
+    teacherId: uuid.UUID,
+    current_user: AdminUser,
+    session: SessionDep,
+    academic_year_id: Optional[uuid.UUID] = None,
+):
+    teacher = findTeacherByIdYearScoped(teacherId, session, academic_year_id)
     return teacher
 
 
@@ -67,6 +89,7 @@ def getTeacherById(teacherId: uuid.UUID, current_user: AdminUser, session: Sessi
 async def saveTeacher(
         current_user: AdminUser,
         session: SessionDep,
+    request: Request,
         username: str = Form(...),
         first_name: str = Form(...),
         last_name: str = Form(...),
@@ -80,6 +103,8 @@ async def saveTeacher(
         password: str = Form(...),
         img: Union[UploadFile, str, None] = File(None)
 ):
+    ensureSelectedAcademicYearIsMutable(request, session)
+
     try:
         subject_ids = [
             uuid.UUID(s.strip())
@@ -200,6 +225,7 @@ def updatePassword(
 async def updateTeacher(
         current_user: AdminUser,
         session: SessionDep,
+    request: Request,
         id: str = Form(...),
         username: str = Form(...),
         first_name: str = Form(...),
@@ -213,6 +239,8 @@ async def updateTeacher(
         subjects: str = Form(...),
         img: Union[UploadFile, str, None] = File(None)
 ):
+    ensureSelectedAcademicYearIsMutable(request, session)
+
     if not id:
         raise HTTPException(
             status_code=400,
@@ -295,6 +323,7 @@ async def updateTeacher(
 
 
 @router.delete("/delete", response_model=TeacherDeleteResponse)
-def softDeleteTeacher(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
+def softDeleteTeacher(current_user: AdminUser, id: uuid.UUID, session: SessionDep, request: Request):
+    ensureSelectedAcademicYearIsMutable(request, session)
     result = teacherSoftDeleteWithLessonAndClassAndSubject(id, session)
     return result

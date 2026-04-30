@@ -8,7 +8,8 @@ from sqlmodel import Session, select, or_
 
 from core.config import settings
 from core.security import get_password_hash
-from models import Parent, Student, StudentClassHistory
+from deps import UserRole
+from models import Parent, Student, StudentClassHistory, Lesson
 from schemas import ParentSave, ParentUpdate, PaginatedParentResponse, updatePasswordModel
 
 
@@ -30,7 +31,8 @@ def countParent(session: Session):
     ).first()
 
 
-def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 1, year_id=None):
+def getAllParentIsDeleteFalse(session: Session, user_id: uuid.UUID, role: str, search: str = None, page: int = 1,
+                              year_id=None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     if year_id:
@@ -44,6 +46,13 @@ def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 
                 StudentClassHistory.academic_year_id == year_id,
             )
         )
+
+        if role == UserRole.TEACHER:
+            count_query = count_query.join(
+                Lesson, onclause=(Lesson.class_id == StudentClassHistory.class_id)
+            ).where(
+                Lesson.teacher_id == user_id
+            )
     else:
         count_query = (
             select(func.count(Parent.id.distinct()))
@@ -64,6 +73,13 @@ def getAllParentIsDeleteFalse(session: Session, search: str = None, page: int = 
                 StudentClassHistory.academic_year_id == year_id,
             )
         )
+
+        if role == UserRole.TEACHER:
+            query = query.join(
+                Lesson, onclause=(Lesson.class_id == StudentClassHistory.class_id)
+            ).where(
+                Lesson.teacher_id == user_id
+            )
     else:
         query = (
             select(Parent)

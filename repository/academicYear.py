@@ -3,10 +3,12 @@ from datetime import date, datetime
 from typing import Optional, List
 
 from fastapi import HTTPException
+from starlette.requests import Request
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from models import AcademicYear, Student, StudentClassHistory, StudentStatus, Teacher, Parent
+from repository.teacherClassHistory import seedTeacherClassHistoryToAcademicYear
 from schemas import AcademicYearCreate, AcademicYearUpdate, PaginatedAcademicYearResponse
 from core.config import settings
 
@@ -17,6 +19,33 @@ def getActiveAcademicYear(session: Session) -> Optional[AcademicYear]:
         AcademicYear.is_delete == False,
     )
     return session.exec(query).first()
+
+
+def ensureSelectedAcademicYearIsMutable(request: Request, session: Session) -> Optional[AcademicYear]:
+    selected_year_id = request.cookies.get("selected_year_id")
+    if not selected_year_id:
+        print("selected_year_id not found ", getActiveAcademicYear(session))
+        return getActiveAcademicYear(session)
+
+    try:
+        year_uuid = uuid.UUID(selected_year_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Selected academic year is invalid.")
+
+    selected_year = getAcademicYearById(year_uuid, session)
+    if not selected_year:
+        raise HTTPException(status_code=404, detail="Selected academic year not found.")
+
+    active_year = getActiveAcademicYear(session)
+    if active_year and selected_year.id != active_year.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Past academic years are read-only. Switch to the active year to make changes.",
+        )
+
+    print("selected_year ", selected_year)
+
+    return selected_year
 
 
 def getAcademicYearById(year_id: uuid.UUID, session: Session) -> Optional[AcademicYear]:
@@ -153,6 +182,7 @@ def createAcademicYear(data: AcademicYearCreate, session: Session) -> AcademicYe
 
 
 def activateAcademicYear(year_id: uuid.UUID, session: Session) -> AcademicYear:
+    previous_active = getActiveAcademicYear(session)
     target = session.exec(
         select(AcademicYear).where(
             AcademicYear.id == year_id,
@@ -172,6 +202,10 @@ def activateAcademicYear(year_id: uuid.UUID, session: Session) -> AcademicYear:
 
     target.is_active = True
     session.add(target)
+
+    # Snapshot teacher-class history for the year being closed (previous active year).
+    if previous_active and previous_active.id != target.id:
+        seedTeacherClassHistoryToAcademicYear(previous_active.id, session)
 
     # Sync all students' grade_id / class_id / status from their history record for this year
     histories = session.exec(

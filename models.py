@@ -110,6 +110,7 @@ class AcademicYear(SQLModel, table=True):
 
     class_histories: List["StudentClassHistory"] = Relationship(back_populates="academic_year")
     lessons: List["Lesson"] = Relationship(back_populates="academic_year")
+    teacher_class_histories: List["TeacherClassHistory"] = Relationship(back_populates="academic_year")
 
 
 # ===================== Association Tables =====================
@@ -140,6 +141,7 @@ class Teacher(SQLModel, table=True):
     subjects: List["Subject"] = Relationship(back_populates="teachers", link_model=TeacherSubjectLink)
     lessons: List["Lesson"] = Relationship(back_populates="teacher")
     classes: List["Class"] = Relationship(back_populates="supervisor")
+    class_histories: List["TeacherClassHistory"] = Relationship(back_populates="teacher")
 
 
 # ===================== Subject =====================
@@ -199,6 +201,7 @@ class Class(SQLModel, table=True):
     events: List["Event"] = Relationship(back_populates="related_class")
     announcements: List["Announcement"] = Relationship(back_populates="related_class")
     attendances: List["Attendance"] = Relationship(back_populates="related_class")
+    teacher_class_histories: List["TeacherClassHistory"] = Relationship(back_populates="related_class")
 
 
 # ===================== Student =====================
@@ -257,6 +260,23 @@ class StudentClassHistory(SQLModel, table=True):
     # Snapshot of the class/grade the student was in for this year (nullable = unassigned)
     class_id: Optional[uuid.UUID] = Field(default=None, foreign_key="class.id")
     grade_id: Optional[uuid.UUID] = Field(default=None, foreign_key="grade.id")
+
+
+# ===================== TeacherClassHistory =====================
+class TeacherClassHistory(SQLModel, table=True):
+    __tablename__ = "teacher_class_history"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+
+    teacher_id: uuid.UUID = Field(nullable=False, foreign_key="teacher.id")
+    teacher: "Teacher" = Relationship(back_populates="class_histories")
+
+    academic_year_id: uuid.UUID = Field(nullable=False, foreign_key="academic_year.id")
+    academic_year: "AcademicYear" = Relationship(back_populates="teacher_class_histories")
+
+    class_id: uuid.UUID = Field(nullable=False, foreign_key="class.id")
+    related_class: "Class" = Relationship(back_populates="teacher_class_histories")
 
 
 # ===================== Lesson =====================

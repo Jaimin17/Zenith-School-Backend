@@ -4,8 +4,9 @@ from typing import List
 from fastapi.params import Form
 
 from core.database import SessionDep
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from deps import CurrentUser, TeacherOrAdminUser, AdminUser, StudentUser
+from repository.academicYear import ensureSelectedAcademicYearIsMutable
 from repository.classes import getAllClassesIsDeleteFalse, getAllClassOfTeacherAndIsDeleteFalse, findClassById, \
     classSave, ClassUpdate, ClassSoftDeleteWithLessonsStudentsEventsAnnoucements, countAllClassOfTheTeacher, \
     getClassOfStudentAndIsDeleteFalse, getAllClassesIsDeleteFalseAtOnce
@@ -17,12 +18,14 @@ router = APIRouter(
 
 
 @router.get("/getAll", response_model=PaginatedClassResponse)
-def getAllClasses(current_user: TeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1):
+def getAllClasses(current_user: TeacherOrAdminUser, session: SessionDep, search: str = None, page: int = 1, academic_year_id: uuid.UUID = None):
     user, role = current_user
     if role == "admin":
-        all_classes = getAllClassesIsDeleteFalse(session, search, page)
+        all_classes = getAllClassesIsDeleteFalse(session, search, page, academic_year_id)
     else:
-        all_classes = getAllClassOfTeacherAndIsDeleteFalse(user.id, session, search, page)
+        all_classes = getAllClassOfTeacherAndIsDeleteFalse(user.id, session, search, page, academic_year_id)
+
+    print("Classes List: ", all_classes)
     return all_classes
 
 
@@ -40,15 +43,26 @@ def getStudentClass(current_user: StudentUser, session: SessionDep):
 
 
 @router.get("/countByTeacher/{teacherId}", response_model=int)
-def countClassByTeacher(current_user: TeacherOrAdminUser, teacherId: uuid.UUID, session: SessionDep):
-    total_class = countAllClassOfTheTeacher(teacherId, session)
+def countClassByTeacher(
+    current_user: TeacherOrAdminUser,
+    teacherId: uuid.UUID,
+    session: SessionDep,
+    academic_year_id: uuid.UUID = None,
+):
+    total_class = countAllClassOfTheTeacher(teacherId, session, academic_year_id)
     return total_class
 
 
 @router.get("/{supervisorId}", response_model=PaginatedClassResponse)
-def getClassesOfTeacher(supervisorId: uuid.UUID, current_user: CurrentUser, session: SessionDep, search: str = None,
-                        page: int = 1):
-    teacher_class = getAllClassOfTeacherAndIsDeleteFalse(supervisorId, session, search, page)
+def getClassesOfTeacher(
+    supervisorId: uuid.UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+    search: str = None,
+    page: int = 1,
+    academic_year_id: uuid.UUID = None,
+):
+    teacher_class = getAllClassOfTeacherAndIsDeleteFalse(supervisorId, session, search, page, academic_year_id)
     return teacher_class
 
 
@@ -65,11 +79,14 @@ def getClassById(classId: uuid.UUID, current_user: CurrentUser, session: Session
 def saveClass(
         current_user: AdminUser,
         session: SessionDep,
+        request: Request,
         name: str = Form(...),
         capacity: int = Form(...),
         supervisorId: uuid.UUID = Form(...),
         gradeId: uuid.UUID = Form(...),
 ):
+    ensureSelectedAcademicYearIsMutable(request, session)
+
     if not name or len(name.strip()) < 1:
         raise HTTPException(
             status_code=400,
@@ -109,12 +126,15 @@ def saveClass(
 def updateClass(
         current_user: AdminUser,
         session: SessionDep,
+        request: Request,
         id: uuid.UUID = Form(...),
         name: str = Form(...),
         capacity: int = Form(...),
         supervisorId: uuid.UUID = Form(...),
         gradeId: uuid.UUID = Form(...),
 ):
+    ensureSelectedAcademicYearIsMutable(request, session)
+
     if not id:
         raise HTTPException(
             status_code=400,
@@ -153,11 +173,14 @@ def updateClass(
         gradeId=gradeId
     )
 
+    print("class data: ", class_data)
+
     result = ClassUpdate(class_data, session)
     return result
 
 
 @router.delete("/delete", response_model=ClassDeleteResponse)
-def softDeleteClass(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
+def softDeleteClass(current_user: AdminUser, id: uuid.UUID, session: SessionDep, request: Request):
+    ensureSelectedAcademicYearIsMutable(request, session)
     result = ClassSoftDeleteWithLessonsStudentsEventsAnnoucements(id, session)
     return result

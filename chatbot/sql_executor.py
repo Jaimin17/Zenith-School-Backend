@@ -51,6 +51,9 @@ def execute_sql_query(sql: str, session: SessionDep, request_id: str | None = No
             sql_with_limit = sql.rstrip(";") + f" LIMIT {MAX_ROWS};"
         else:
             sql_with_limit = sql
+
+        print(sql_with_limit)
+
         result = session.exec(text(sql_with_limit))
         rows = result.fetchall()
         columns = result.keys()

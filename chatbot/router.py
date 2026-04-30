@@ -95,6 +95,7 @@ async def chat(request: ChatRequest, current_user: AllUser, session: SessionDep)
                 "display_name": " ".join(
                     part for part in [getattr(user, "first_name", ""), getattr(user, "last_name", "")] if part
                 ).strip(),
+                "selected_academic_year_id": str(request.selected_academic_year_id) if request.selected_academic_year_id else "",
             }
 
             if role == UserRole.PARENT:
@@ -130,7 +131,7 @@ async def chat(request: ChatRequest, current_user: AllUser, session: SessionDep)
                         query=request.query,
                         role=role,
                         user_id=user.id,
-                    extra=base_extra,
+                        extra=base_extra,
                         session=session,
                         chat_history=request.chat_history,
                         request_id=request_id,

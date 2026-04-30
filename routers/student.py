@@ -2,13 +2,14 @@ import uuid
 from datetime import date, datetime
 from typing import List, Union, Optional
 
-from fastapi import APIRouter, HTTPException, Form, UploadFile, File
+from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Request
 
 from core.config import settings
 from deps import CurrentUser, StudentOrAdminUser, AdminUser, StudentOrTeacherOrAdminUser, ParentOrTeacherOrAdminUser, \
     UserRole, ParentUser, StudentOrParentOrAdminUser
 from core.database import SessionDep
 from models import UserSex
+from repository.academicYear import getAcademicYearById, getActiveAcademicYear, ensureSelectedAcademicYearIsMutable
 from schemas import StudentRead, SaveResponse, StudentSave, StudentUpdateBase, StudentDeleteResponse, \
     PaginatedStudentResponse, updatePasswordModel, ChildItem, BulkPromoteRequest, BulkPromoteResponse, \
     AssignClassRequest, StudentYearDataResponse, StudentHistoryResponse
@@ -81,6 +82,7 @@ async def getStudentsOfClass(classId: uuid.UUID, current_user: CurrentUser, sess
 async def saveStudent(
         current_user: AdminUser,
         session: SessionDep,
+    request: Request,
         username: str = Form(...),
         first_name: str = Form(...),
         last_name: str = Form(...),
@@ -96,6 +98,8 @@ async def saveStudent(
         grade_id: str = Form(...),
         img: Union[UploadFile, str, None] = File(None)
 ):
+    ensureSelectedAcademicYearIsMutable(request, session)
+
     try:
         parent_uuid = uuid.UUID(parent_id.strip()) if parent_id else None
     except ValueError as e:
@@ -271,6 +275,7 @@ def updatePassword(
 async def updateStudent(
         current_user: AdminUser,
         session: SessionDep,
+    request: Request,
         id: str = Form(...),
         username: str = Form(...),
         first_name: str = Form(...),
@@ -286,6 +291,8 @@ async def updateStudent(
         grade_id: str = Form(...),
         img: Union[UploadFile, str, None] = File(None)
 ):
+    ensureSelectedAcademicYearIsMutable(request, session)
+
     try:
         studentId = uuid.UUID(id.strip())
     except ValueError as e:
@@ -417,7 +424,8 @@ async def updateStudent(
 
 
 @router.delete("/delete", response_model=StudentDeleteResponse)
-def softDeleteStudent(current_user: AdminUser, id: uuid.UUID, session: SessionDep):
+def softDeleteStudent(current_user: AdminUser, id: uuid.UUID, session: SessionDep, request: Request):
+    ensureSelectedAcademicYearIsMutable(request, session)
     result = studentSoftDelete(id, session)
     return result
 
@@ -456,12 +464,14 @@ def assignClass(
     data: AssignClassRequest,
     current_user: AdminUser,
     session: SessionDep,
+    request: Request,
 ):
     """
     Admin: Manually assign a student to a specific class.
     Updates both the student record and the StudentClassHistory entry for the given year.
     Defaults to the active academic year if academic_year_id is not supplied.
     """
+    ensureSelectedAcademicYearIsMutable(request, session)
     return assignClassToStudent(student_id, data.class_id, data.academic_year_id, session)
 
 

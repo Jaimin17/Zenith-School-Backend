@@ -23,13 +23,15 @@ def register(current_user: AdminUser, session: SessionDep):
 
 @router.get("/getAll", response_model=PaginatedParentResponse)
 def getAllParent(
-    current_user: TeacherOrAdminUser,
-    session: SessionDep,
-    search: str = None,
-    page: int = 1,
-    year_id: Optional[uuid.UUID] = None,
+        current_user: TeacherOrAdminUser,
+        session: SessionDep,
+        search: str = None,
+        page: int = 1,
+        year_id: Optional[uuid.UUID] = None,
 ):
-    all_parents = getAllParentIsDeleteFalse(session, search, page, year_id)
+    user, role = current_user
+
+    all_parents = getAllParentIsDeleteFalse(session, user.id, role, search, page, year_id)
     return all_parents
 
 
