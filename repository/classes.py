@@ -44,11 +44,16 @@ def getAllClassesIsDeleteFalse(session: Session, search: str, page: int, academi
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     all_classes = session.exec(query).all()
 
+    print("CLass List: ", all_classes)
+
     # (No per-teacher fallback here; admin class listing returns all classes. Assignment override happens below.)
-    is_current_year = (academic_year_id == getActiveAcademicYear(session))
+    is_current_year = (academic_year_id == getActiveAcademicYear(session).id)
+
+    print(is_current_year, (academic_year_id == getActiveAcademicYear(session).id))
 
     # If academic year provided, attach assigned teacher for that year (history -> lessons -> supervisor)
     if academic_year_id and not is_current_year:
+        print("Hello")
         active_year = getActiveAcademicYear(session)
         for c in all_classes:
             # Try TeacherClassHistory

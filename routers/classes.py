@@ -24,8 +24,6 @@ def getAllClasses(current_user: TeacherOrAdminUser, session: SessionDep, search:
         all_classes = getAllClassesIsDeleteFalse(session, search, page, academic_year_id)
     else:
         all_classes = getAllClassOfTeacherAndIsDeleteFalse(user.id, session, search, page, academic_year_id)
-
-    print("Classes List: ", all_classes)
     return all_classes
 
 
@@ -84,8 +82,9 @@ def saveClass(
         capacity: int = Form(...),
         supervisorId: uuid.UUID = Form(...),
         gradeId: uuid.UUID = Form(...),
+        academic_year_id: uuid.UUID = Form(...)
 ):
-    ensureSelectedAcademicYearIsMutable(request, session)
+    ensureSelectedAcademicYearIsMutable(request, session, academic_year_id)
 
     if not name or len(name.strip()) < 1:
         raise HTTPException(
@@ -132,8 +131,10 @@ def updateClass(
         capacity: int = Form(...),
         supervisorId: uuid.UUID = Form(...),
         gradeId: uuid.UUID = Form(...),
+        academic_year_id: uuid.UUID = Form(...)
 ):
-    ensureSelectedAcademicYearIsMutable(request, session)
+    print("Academic Year: ", academic_year_id)
+    ensureSelectedAcademicYearIsMutable(request, session, academic_year_id)
 
     if not id:
         raise HTTPException(

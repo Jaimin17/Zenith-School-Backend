@@ -21,16 +21,12 @@ def getActiveAcademicYear(session: Session) -> Optional[AcademicYear]:
     return session.exec(query).first()
 
 
-def ensureSelectedAcademicYearIsMutable(request: Request, session: Session) -> Optional[AcademicYear]:
-    selected_year_id = request.cookies.get("selected_year_id")
-    if not selected_year_id:
+def ensureSelectedAcademicYearIsMutable(request: Request, session: Session, academic_year_id: uuid.UUID = None) -> \
+Optional[AcademicYear]:
+    year_uuid = academic_year_id
+    if not year_uuid:
         print("selected_year_id not found ", getActiveAcademicYear(session))
         return getActiveAcademicYear(session)
-
-    try:
-        year_uuid = uuid.UUID(selected_year_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Selected academic year is invalid.")
 
     selected_year = getAcademicYearById(year_uuid, session)
     if not selected_year:
