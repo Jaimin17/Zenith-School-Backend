@@ -4,7 +4,7 @@ from typing import Optional, Union
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File
 from core.database import SessionDep
 from models import Achievements
-from repository.achievements import getAllAchievementsActive, getAchievementById, achievementSave, achievementUpdate, \
+from repository.achievements import getAllAchievementsActive, getAllPublicAchievements, getAchievementById, achievementSave, achievementUpdate, \
     achievementToggleActive, achievementSoftDelete
 from schemas import SaveResponse, PaginatedAchievementsResponse, \
     AchievementDetail
@@ -18,6 +18,12 @@ router = APIRouter(
 @router.get("/getAll", response_model=PaginatedAchievementsResponse)
 def getAllAchievements(session: SessionDep, search: str = None, page: int = 1):
     achievements = getAllAchievementsActive(session=session, search=search, page=page)
+    return achievements
+
+
+@router.get("/public", response_model=PaginatedAchievementsResponse)
+def getPublicAchievements(session: SessionDep):
+    achievements = getAllPublicAchievements(session=session)
     return achievements
 
 

@@ -59,6 +59,29 @@ def getAllAchievementsActive(session: Session, search: str, page: int):
     )
 
 
+def getAllPublicAchievements(session: Session):
+    query = (
+        select(Achievements)
+        .where(
+            Achievements.is_active == True,
+            Achievements.is_delete == False
+        )
+        .order_by(Achievements.created_at.desc())
+    )
+
+    achievements = session.exec(query).unique().all()
+    total_count = len(achievements)
+
+    return PaginatedAchievementsResponse(
+        data=achievements,
+        total_count=total_count,
+        page=1,
+        total_pages=1,
+        has_next=False,
+        has_prev=False,
+    )
+
+
 def getAchievementById(session: Session, achievementId: uuid.UUID):
     query = (
         select(Achievements)
