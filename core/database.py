@@ -7,7 +7,12 @@ from sqlmodel import create_engine, Session, SQLModel
 
 settings = Settings()
 
-engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI), echo=False)
+engine = create_engine(
+    str(settings.SQLALCHEMY_DATABASE_URI),
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+)
 
 def init_db(session: Session) -> None:
     SQLModel.metadata.create_all(engine)
