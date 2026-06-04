@@ -177,13 +177,14 @@ def getAllByDate(current_user: AllUser, session: SessionDep, selectDate: str | N
     return events
 
 
+# router
 @router.post("/save", response_model=SaveResponse)
 async def saveEvents(
         current_user: AdminUser,
         session: SessionDep,
         title: str = Form(...),
         description: str = Form(...),
-        img: list[Union[str, UploadFile]] = File(...),
+        img: list[UploadFile] = File(...),  # ✅ clean type
         start_time: datetime = Form(...),
         end_time: datetime = Form(...),
         class_id: Optional[str] = Form(None)
@@ -191,77 +192,42 @@ async def saveEvents(
     user, role = current_user
 
     if not title or len(title.strip()) < 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Title should be at least 3 characters long."
-        )
+        raise HTTPException(status_code=400, detail="Title should be at least 3 characters long.")
 
     if not description or len(description.strip()) < 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Description should be at least 10 characters long."
-        )
-
-    if not start_time:
-        raise HTTPException(
-            status_code=400,
-            detail="Start time is required."
-        )
-
-    if not end_time:
-        raise HTTPException(
-            status_code=400,
-            detail="End time is required."
-        )
+        raise HTTPException(status_code=400, detail="Description should be at least 10 characters long.")
 
     if start_time >= end_time:
-        raise HTTPException(
-            status_code=400,
-            detail="Event start time must be before end time."
-        )
+        raise HTTPException(status_code=400, detail="Event start time must be before end time.")
 
-    event_start = start_time
-    # if event_start.tzinfo is None:
-    #     event_start = event_start.replace(tzinfo=timezone.utc)
-
-    # if event_start < datetime.now(timezone.utc):
-    if event_start < datetime.now():
-        raise HTTPException(
-            status_code=400,
-            detail="Event start time cannot be in the past."
-        )
+    if start_time < datetime.now():
+        raise HTTPException(status_code=400, detail="Event start time cannot be in the past.")
 
     classId = None
     if class_id:
         try:
             classId = uuid.UUID(class_id)
         except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="class Id is not a valid type."
-            )
+            raise HTTPException(status_code=400, detail="class Id is not a valid type.")
 
-    processed_imgs: list[UploadFile] = [
-        image for image in img
-        if image is not None and not isinstance(image, str)
-           and hasattr(image, 'filename') and hasattr(image, 'file') and image.filename
+    # ✅ Filter only real uploaded files (skip empty/browser-injected stubs)
+    valid_imgs = [
+        f for f in img
+        if f and f.filename and f.size and f.size > 0
     ]
 
-    if not processed_imgs:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one valid image file must be uploaded."
-        )
+    if not valid_imgs:
+        raise HTTPException(status_code=400, detail="At least one valid image file must be uploaded.")
 
-    event_data: EventSave = EventSave(
+    event_data = EventSave(
         title=title.strip(),
         description=description.strip(),
-        start_time=event_start,
+        start_time=start_time,
         end_time=end_time,
         class_id=classId
     )
 
-    result = await eventSave(event_data, processed_imgs, session)
+    result = await eventSave(event_data, valid_imgs, session)
     return result
 
 

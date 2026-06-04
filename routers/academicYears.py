@@ -4,7 +4,7 @@ from typing import List
 from fastapi import APIRouter, Query
 
 from core.database import SessionDep
-from deps import AdminUser, CurrentUser
+from deps import CurrentUser, AdminUser
 from repository.academicYear import (
     getAllAcademicYears,
     getAllAcademicYearsUnpaginated,

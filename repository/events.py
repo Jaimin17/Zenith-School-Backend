@@ -336,79 +336,62 @@ def getAllEventsByParentAndIsDeleteFalse(parentId, session, search, page, from_d
     )
 
 
+# service
 async def eventSave(event: EventSave, images: list[UploadFile], session: Session):
     title = event.title.strip()
     description = event.description.strip()
 
-    search_duplicate_query = (
-        select(Event)
-        .where(
+    # Duplicate title check
+    duplicate_event = session.exec(
+        select(Event).where(
             Event.title.ilike(f"%{title}%"),
             Event.is_delete == False
         )
-    )
-    duplicate_event = session.exec(search_duplicate_query).first()
+    ).first()
 
     if duplicate_event:
-        raise HTTPException(
-            status_code=400,
-            detail="An event with similar title already exists."
-        )
+        raise HTTPException(status_code=400, detail="An event with similar title already exists.")
 
+    # Class + time conflict check
     class_id = None
     if event.class_id is not None:
-        class_query = (
-            select(Class)
-            .where(Class.id == event.class_id, Class.is_delete == False)
-        )
-        selected_class = session.exec(class_query).first()
+        selected_class = session.exec(
+            select(Class).where(Class.id == event.class_id, Class.is_delete == False)
+        ).first()
 
         if not selected_class:
-            raise HTTPException(
-                status_code=404,
-                detail="Class not found or has been deleted."
-            )
+            raise HTTPException(status_code=404, detail="Class not found or has been deleted.")
 
         class_id = selected_class.id
 
-        time_conflict_query = (
-            select(Event)
-            .where(
-                or_(
-                    Event.class_id == class_id,
-                    Event.class_id == None
-                ),
+        conflicting_event = session.exec(
+            select(Event).where(
+                or_(Event.class_id == class_id, Event.class_id == None),
                 Event.is_delete == False,
                 or_(
-                    and_(
-                        Event.start_time <= event.start_time,
-                        Event.end_time > event.start_time
-                    ),
-                    and_(
-                        Event.start_time < event.end_time,
-                        Event.end_time >= event.end_time
-                    ),
-                    and_(
-                        Event.start_time >= event.start_time,
-                        Event.end_time <= event.end_time
-                    )
+                    and_(Event.start_time <= event.start_time, Event.end_time > event.start_time),
+                    and_(Event.start_time < event.end_time, Event.end_time >= event.end_time),
+                    and_(Event.start_time >= event.start_time, Event.end_time <= event.end_time)
                 )
             )
-        )
-        conflicting_event = session.exec(time_conflict_query).first()
+        ).first()
 
         if conflicting_event:
             raise HTTPException(
                 status_code=400,
-                detail=f"Time conflict: Another event '{conflicting_event.title}' is scheduled for this class at the same time."
+                detail=f"Time conflict: '{conflicting_event.title}' is scheduled at the same time."
             )
 
+    # ✅ Save images with cleanup on partial failure
     saved_filenames: list[str] = []
     try:
         for image in images:
+            # Reset stream in case it was read elsewhere
+            await image.seek(0)
             filename = await process_and_save_image(image, EVENT_IMAGE_FOLDER, title)
             saved_filenames.append(filename)
-    except ValueError as e:
+    except (ValueError, Exception) as e:
+        # Clean up any images already saved before the failure
         for fname in saved_filenames:
             cleanup_image(settings.UPLOAD_DIR_DP / EVENT_IMAGE_FOLDER / fname)
         raise HTTPException(status_code=400, detail=str(e))
@@ -416,7 +399,7 @@ async def eventSave(event: EventSave, images: list[UploadFile], session: Session
     new_event = Event(
         title=title,
         description=description,
-        img=str(saved_filenames),
+        img=str(saved_filenames),  # consider json.dumps(saved_filenames) instead
         start_time=event.start_time,
         end_time=event.end_time,
         class_id=class_id,
@@ -428,19 +411,15 @@ async def eventSave(event: EventSave, images: list[UploadFile], session: Session
     try:
         session.flush()
         session.commit()
-    except IntegrityError as e:
+    except IntegrityError:
         session.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail="Database integrity error. Please check your data."
-        )
+        # Clean up saved images if DB commit fails
+        for fname in saved_filenames:
+            cleanup_image(settings.UPLOAD_DIR_DP / EVENT_IMAGE_FOLDER / fname)
+        raise HTTPException(status_code=400, detail="Database integrity error. Please check your data.")
 
     session.refresh(new_event)
-
-    return {
-        "id": str(new_event.id),
-        "message": "Event created successfully"
-    }
+    return {"id": str(new_event.id), "message": "Event created successfully"}
 
 
 async def eventUpdate(event: EventUpdate, images: list[UploadFile], session: Session):
