@@ -5,6 +5,7 @@ from typing import List, Optional
 from fastapi import HTTPException, UploadFile
 from psycopg import IntegrityError
 from sqlalchemy import func, Select, or_
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 import os
 
@@ -86,10 +87,12 @@ def _attach_year_scoped_data(
                 classes = sorted(class_map.values(), key=lambda c: (c.name or ""))
 
         lessons = session.exec(
-            select(Lesson).where(
-                Lesson.teacher_id == teacher.id,
-                Lesson.academic_year_id == academic_year_id,
-                Lesson.is_delete == False,
+            select(Lesson)
+                .options(selectinload(Lesson.subject))
+                .where(
+                    Lesson.teacher_id == teacher.id,
+                    Lesson.academic_year_id == academic_year_id,
+                    Lesson.is_delete == False,
             )
         ).all()
 
@@ -542,11 +545,14 @@ async def TeacherUpdate(teacher_data: dict, img: Optional[UploadFile], session: 
     currentTeacher.blood_type = teacher_data["blood_type"]
     currentTeacher.sex = teacher_data["sex"]
     currentTeacher.dob = teacher_data["dob"]
-    currentTeacher.subjects = subjects
 
     session.add(currentTeacher)
 
     try:
+        session.flush()
+        # Update subjects after flush to avoid autoflush deadlock
+        with session.no_autoflush:
+            currentTeacher.subjects = subjects
         session.commit()
     except IntegrityError as e:
         session.rollback()
@@ -611,8 +617,7 @@ def teacherSoftDeleteWithLessonAndClassAndSubject(id: uuid.UUID, session: Sessio
         }
 
     subject_count = len(currentTeacher.subjects) if currentTeacher.subjects else 0
-    currentTeacher.subjects = []
-
+    
     lesson_query = (
         select(Lesson)
         .where(Lesson.teacher_id == id, Lesson.is_delete == False)
@@ -628,6 +633,10 @@ def teacherSoftDeleteWithLessonAndClassAndSubject(id: uuid.UUID, session: Sessio
     session.add(currentTeacher)
 
     try:
+        session.flush()
+        # Clear subjects after flush to avoid autoflush deadlock
+        with session.no_autoflush:
+            currentTeacher.subjects = []
         session.commit()
     except IntegrityError:
         session.rollback()

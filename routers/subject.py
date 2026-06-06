@@ -15,14 +15,14 @@ router = APIRouter(
 
 
 @router.get("/getAll", response_model=PaginatedSubjectResponse)
-def getAllSubject(current_user: AdminUser, session: SessionDep, search: str = None, page: int = 1):
-    all_subjects = getAllSubjectsIsDeleteFalse(session, search, page)
+def getAllSubject(current_user: AdminUser, session: SessionDep, search: str = None, page: int = 1, academic_year_id: uuid.UUID = None):
+    all_subjects = getAllSubjectsIsDeleteFalse(session, search, page, academic_year_id)
     return all_subjects
 
 
 @router.get("/getFullList", response_model=List[SubjectRead])
-def getFullListOfSubject(current_user: TeacherOrAdminUser, session: SessionDep):
-    all_subjects = getListOfAllSubjectIsDeleteFalse(session)
+def getFullListOfSubject(current_user: TeacherOrAdminUser, session: SessionDep, academic_year_id: uuid.UUID = None):
+    all_subjects = getListOfAllSubjectIsDeleteFalse(session, academic_year_id)
     return all_subjects
 
 

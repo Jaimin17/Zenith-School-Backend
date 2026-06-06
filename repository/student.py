@@ -117,6 +117,9 @@ def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int, year_i
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     active_students = session.exec(query).unique().all()
 
+    # Attach year-scoped class/grade data when a year_id is provided
+    active_students = _attach_year_scoped_data(active_students, year_id, session)
+
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
 
     return PaginatedStudentResponse(
@@ -127,6 +130,38 @@ def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int, year_i
         has_next=page < total_pages,
         has_prev=page > 1
     )
+
+
+def _attach_year_scoped_data(
+    students: List[Student],
+    academic_year_id: Optional[uuid.UUID],
+    session: Session,
+) -> List[Student]:
+    """
+    For each student, resolve StudentClassHistory for the given academic year and
+    override `related_class` and `grade` on the returned Student objects so
+    that UI consumers display year-scoped class/grade information.
+    """
+    if not academic_year_id or not students:
+        return students
+
+    for student in students:
+        history = session.exec(
+            select(StudentClassHistory).where(
+                StudentClassHistory.student_id == student.id,
+                StudentClassHistory.academic_year_id == academic_year_id,
+            )
+        ).first()
+
+        if history:
+            student.related_class = session.get(Class, history.class_id) if history.class_id else None
+            student.grade = session.get(Grade, history.grade_id) if history.grade_id else None
+        else:
+            # If there is no history row for this year, null out the year-scoped relations
+            student.related_class = None
+            student.grade = None
+
+    return students
 
 
 def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UUID, search: str, page: int,
@@ -188,6 +223,9 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     results = session.exec(query).all()
+
+    # Attach year-scoped class/grade when requested
+    results = _attach_year_scoped_data(results, year_id, session)
 
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
 
@@ -252,6 +290,9 @@ def getAllStudentsOfParentAndIsDeleteFalse(session: Session, parentId: uuid.UUID
     query = addSearchOption(query, search)
     query = query.offset(offset_value).limit(settings.ITEMS_PER_PAGE)
     results = session.exec(query).all()
+
+    # Attach year-scoped class/grade when requested
+    results = _attach_year_scoped_data(results, year_id, session)
 
     total_pages = (total_count + settings.ITEMS_PER_PAGE - 1) // settings.ITEMS_PER_PAGE
 

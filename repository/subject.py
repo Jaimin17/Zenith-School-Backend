@@ -1,4 +1,5 @@
 import uuid
+from typing import List, Optional
 
 from fastapi import HTTPException
 from psycopg import IntegrityError
@@ -7,6 +8,7 @@ from sqlmodel import Session, select, insert
 
 from core.config import settings
 from models import Subject, Teacher, Lesson, TeacherSubjectLink
+from repository.academicYear import getActiveAcademicYear
 from schemas import SubjectSave, SubjectBase, SubjectUpdateBase, PaginatedSubjectResponse
 
 
@@ -20,25 +22,57 @@ def addSearchOption(query: Select, search: str):
     return query
 
 
-def getAllSubjectsIsDeleteFalse(session: Session, search: str = None, page: int = 1):
+def getAllSubjectsIsDeleteFalse(
+    session: Session,
+    search: str = None,
+    page: int = 1,
+    academic_year_id: Optional[uuid.UUID] = None,
+):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
-    count_query = (
-        select(func.count(Subject.id.distinct()))
-        .where(
-            Subject.is_delete == False
+    current_active_year = getActiveAcademicYear(session)
+
+    if academic_year_id and current_active_year.id != academic_year_id:
+        year_filters = (
+            Subject.is_delete == False,
+            Lesson.is_delete == False,
+            Lesson.academic_year_id == academic_year_id,
         )
-    )
+
+        count_query = (
+            select(func.count(func.distinct(Subject.id)))
+            .join(Lesson, Lesson.subject_id == Subject.id)
+            .where(*year_filters)
+        )
+    else:
+        count_query = (
+            select(func.count(Subject.id.distinct()))
+            .where(
+                Subject.is_delete == False
+            )
+        )
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
 
-    query = (
-        select(Subject)
-        .where(Subject.is_delete == False)
-    )
+    if academic_year_id and current_active_year.id != academic_year_id:
+        query = (
+            select(Subject)
+            .join(Lesson, Lesson.subject_id == Subject.id)
+            .where(
+                Subject.is_delete == False,
+                Lesson.is_delete == False,
+                Lesson.academic_year_id == academic_year_id,
+            )
+            .distinct()
+        )
+    else:
+        query = (
+            select(Subject)
+            .where(Subject.is_delete == False)
+        )
 
-    query = query.order_by(func.lower(Subject.name))
+    query = query.order_by(Subject.name)
 
     query = addSearchOption(query, search)
 
@@ -57,13 +91,30 @@ def getAllSubjectsIsDeleteFalse(session: Session, search: str = None, page: int 
     )
 
 
-def getListOfAllSubjectIsDeleteFalse(session: Session):
-    query = (
-        select(Subject)
-        .where(Subject.is_delete == False)
-    )
+def getListOfAllSubjectIsDeleteFalse(
+    session: Session,
+    academic_year_id: Optional[uuid.UUID] = None,
+):
+    current_active_year = getActiveAcademicYear(session)
 
-    query = query.order_by(func.lower(Subject.name))
+    if academic_year_id and current_active_year.id != academic_year_id:
+        query = (
+            select(Subject)
+            .join(Lesson, Lesson.subject_id == Subject.id)
+            .where(
+                Subject.is_delete == False,
+                Lesson.is_delete == False,
+                Lesson.academic_year_id == academic_year_id,
+            )
+            .distinct()
+        )
+    else:
+        query = (
+            select(Subject)
+            .where(Subject.is_delete == False)
+        )
+
+    query = query.order_by(Subject.name)
 
     all_subject_list = session.exec(query).all()
     return all_subject_list
