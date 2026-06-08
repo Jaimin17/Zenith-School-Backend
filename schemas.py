@@ -24,6 +24,41 @@ class ChatRequest(BaseModel):
     chat_history: list[dict] = []  # [{"role": "user", "content": "..."}, ...]
 
 
+class SqlQueryRequest(BaseModel):
+    query: str
+    chat_history: list[dict] = []
+    selected_academic_year_id: Optional[uuid.UUID] = None
+
+
+class SqlQueryResponse(BaseModel):
+    rows: list[dict] = []
+    sql: Optional[str] = None
+    data_source: str = "the school database"
+    query_type: str  # "sql", "doc", "both", "out_of_scope"
+    search_phrase: Optional[str] = None
+    doc_search_phrases: list[str] = []
+    assistant_message: Optional[str] = None
+
+
+class VectorSearchRequest(BaseModel):
+    search_phrase: str
+    k: int = 4
+
+
+class VectorSearchResponse(BaseModel):
+    chunks: str
+    search_phrase: str
+
+
+class SynthesizeRequest(BaseModel):
+    query: str
+    raw_data: str
+    data_source: str = "the school database"
+    chat_history: list[dict] = []
+    session_id: Optional[uuid.UUID] = None
+    selected_academic_year_id: Optional[uuid.UUID] = None
+
+
 class ChatSessionCreateResponse(BaseModel):
     session_id: uuid.UUID
     created_at: datetime

@@ -2,11 +2,25 @@ from sqlmodel import Session, text
 from core.database import SessionDep
 import re
 import time
+import uuid
+from datetime import date, datetime
+from decimal import Decimal
 
 from chatbot.telemetry import log_event, stable_hash
 
 # Hard block dangerous keywords — safety net even if LLM slips
 BLOCKED_KEYWORDS = ["drop", "delete", "update", "insert", "alter", "truncate", "create"]
+
+
+def _coerce(v):
+    """Convert non-JSON-serializable SQL column values to plain Python types."""
+    if isinstance(v, uuid.UUID):
+        return str(v)
+    if isinstance(v, (datetime, date)):
+        return v.isoformat()
+    if isinstance(v, Decimal):
+        return float(v)
+    return v
 MAX_ROWS = 100
 QUERY_TIMEOUT_MS = 5000
 
@@ -68,8 +82,9 @@ def execute_sql_query(sql: str, session: SessionDep, request_id: str | None = No
                 duration_ms=duration_ms,
             )
         # Convert to list of dicts so it's readable
-        return [dict(zip(columns, row)) for row in rows]
+        return [dict(zip(columns, (_coerce(v) for v in row))) for row in rows]
     except Exception as e:
+        session.rollback()  # reset aborted transaction so the session stays usable
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
         if request_id:
             log_event(
