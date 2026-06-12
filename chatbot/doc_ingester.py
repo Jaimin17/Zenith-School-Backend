@@ -3,15 +3,30 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
 
+from core.config import settings
+
 CHROMA_PATH = "./chroma_db"
+
+
+def get_embeddings():
+    """Return the configured embedding model based on EMBEDDING_PROVIDER."""
+    if settings.EMBEDDING_PROVIDER == "gemini":
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+        kwargs = dict(
+            model=settings.GEMINI_EMBEDDING_MODEL,
+            google_api_key=settings.GEMINI_API_KEY,
+        )
+        if settings.GEMINI_EMBEDDING_DIMENSIONS is not None:
+            kwargs["output_dimensionality"] = settings.GEMINI_EMBEDDING_DIMENSIONS
+        return GoogleGenerativeAIEmbeddings(**kwargs)
+    return OllamaEmbeddings(model=settings.OLLAMA_EMBEDDING_MODEL)
 
 
 def get_vectorstore():
     """Get or create the ChromaDB vector store."""
-    embeddings = OllamaEmbeddings(model="nomic-embed-text")
     vectorstore = Chroma(
         persist_directory=CHROMA_PATH,
-        embedding_function=embeddings,
+        embedding_function=get_embeddings(),
         collection_name="school_docs"
     )
     return vectorstore

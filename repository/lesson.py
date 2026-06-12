@@ -10,7 +10,7 @@ from sqlmodel import Session, select, or_, and_
 from starlette import status
 
 from core.config import settings
-from models import Lesson, Teacher, Class, Student, Subject, Exam, Assignment, Attendance, Parent, AcademicYear
+from models import Lesson, Teacher, Class, Student, Subject, Exam, Assignment, Parent, AcademicYear
 from schemas import LessonSave, LessonUpdate, PaginatedLessonResponse
 
 
@@ -461,11 +461,25 @@ def lessonSave(lesson: LessonSave, session: Session):
             detail=f"Teacher {teacher.first_name} {teacher.last_name} does not teach {subject.name}."
         )
 
+    # resolve academic_year_id before conflict checks so all queries are year-scoped
+    academic_year_id = lesson.academic_year_id
+    if not academic_year_id:
+        active_year = session.exec(
+            select(AcademicYear).where(AcademicYear.is_active == True, AcademicYear.is_delete == False)
+        ).first()
+        if not active_year:
+            raise HTTPException(
+                status_code=400,
+                detail="No active academic year found. Please set an active academic year first."
+            )
+        academic_year_id = active_year.id
+
     duplicate_name_query = (
         select(Lesson)
         .where(
             func.lower(Lesson.name) == name.lower(),
             Lesson.class_id == lesson.class_id,
+            Lesson.academic_year_id == academic_year_id,
             Lesson.is_delete == False
         )
     )
@@ -482,6 +496,7 @@ def lessonSave(lesson: LessonSave, session: Session):
         .where(
             Lesson.class_id == lesson.class_id,
             Lesson.day == lesson.day,
+            Lesson.academic_year_id == academic_year_id,
             Lesson.is_delete == False,
             or_(
                 and_(
@@ -512,6 +527,7 @@ def lessonSave(lesson: LessonSave, session: Session):
         .where(
             Lesson.teacher_id == lesson.teacher_id,
             Lesson.day == lesson.day,
+            Lesson.academic_year_id == academic_year_id,
             Lesson.is_delete == False,
             or_(
                 and_(
@@ -536,15 +552,6 @@ def lessonSave(lesson: LessonSave, session: Session):
             status_code=400,
             detail=f"Teacher conflict: {teacher.first_name} {teacher.last_name} is already teaching '{teacher_conflict.name}' on {lesson.day} at the same time."
         )
-
-    # resolve academic_year_id — use provided or fall back to active year
-    academic_year_id = lesson.academic_year_id
-    if not academic_year_id:
-        active_year = session.exec(
-            select(AcademicYear).where(AcademicYear.is_active == True, AcademicYear.is_delete == False)
-        ).first()
-        if active_year:
-            academic_year_id = active_year.id
 
     new_lesson = Lesson(
         name=name,
@@ -663,6 +670,7 @@ def lessonUpdate(lesson: LessonUpdate, session: Session):
         .where(
             func.lower(Lesson.name) == name.lower(),
             Lesson.class_id == lesson.class_id,
+            Lesson.academic_year_id == currentLesson.academic_year_id,
             Lesson.is_delete == False,
             Lesson.id != lesson.id
         )
@@ -680,6 +688,7 @@ def lessonUpdate(lesson: LessonUpdate, session: Session):
         .where(
             Lesson.class_id == lesson.class_id,
             Lesson.day == lesson.day,
+            Lesson.academic_year_id == currentLesson.academic_year_id,
             Lesson.is_delete == False,
             or_(
                 and_(
@@ -711,6 +720,7 @@ def lessonUpdate(lesson: LessonUpdate, session: Session):
         .where(
             Lesson.teacher_id == lesson.teacher_id,
             Lesson.day == lesson.day,
+            Lesson.academic_year_id == currentLesson.academic_year_id,
             Lesson.is_delete == False,
             or_(
                 and_(
@@ -793,6 +803,89 @@ def getAllLessonsByYear(academic_year_id: uuid.UUID, session: Session):
     return session.exec(query).all()
 
 
+def countLessonsByYear(academic_year_id: uuid.UUID, session: Session) -> int:
+    query = (
+        select(func.count())
+        .select_from(Lesson)
+        .where(
+            Lesson.academic_year_id == academic_year_id,
+            Lesson.is_delete == False,
+        )
+    )
+    return session.exec(query).one()
+
+
+def copyLessonsFromPreviousYear(target_year_id: uuid.UUID, session: Session):
+    target_year = session.exec(
+        select(AcademicYear).where(AcademicYear.id == target_year_id, AcademicYear.is_delete == False)
+    ).first()
+
+    if not target_year:
+        raise HTTPException(status_code=404, detail="Target academic year not found.")
+
+    existing_count = countLessonsByYear(target_year_id, session)
+    if existing_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Lessons already exist for this academic year. Copy is only allowed when there are no lessons."
+        )
+
+    previous_year = session.exec(
+        select(AcademicYear)
+        .where(
+            AcademicYear.start_date < target_year.start_date,
+            AcademicYear.is_delete == False,
+        )
+        .order_by(AcademicYear.start_date.desc())
+    ).first()
+
+    if not previous_year:
+        raise HTTPException(
+            status_code=404,
+            detail="No previous academic year found to copy lessons from."
+        )
+
+    # Fetch lessons from previous year where teacher is still active (not deleted)
+    lessons_to_copy = session.exec(
+        select(Lesson)
+        .join(Teacher, onclause=(Lesson.teacher_id == Teacher.id))
+        .where(
+            Lesson.academic_year_id == previous_year.id,
+            Lesson.is_delete == False,
+            Teacher.is_delete == False,
+        )
+    ).all()
+
+    copied = 0
+    for old_lesson in lessons_to_copy:
+        new_lesson = Lesson(
+            name=old_lesson.name,
+            day=old_lesson.day,
+            start_time=old_lesson.start_time,
+            end_time=old_lesson.end_time,
+            subject_id=old_lesson.subject_id,
+            class_id=old_lesson.class_id,
+            teacher_id=old_lesson.teacher_id,
+            academic_year_id=target_year_id,
+            is_delete=False,
+        )
+        session.add(new_lesson)
+        copied += 1
+
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise HTTPException(status_code=500, detail="Failed to copy lessons. Please try again.")
+
+    return {
+        "copied": copied,
+        "skipped": len(lessons_to_copy) - copied,
+        "previous_year_label": previous_year.year_label,
+        "message": f"Successfully copied {copied} lesson(s) from {previous_year.year_label}."
+    }
+
+
 def lessonSoftDelete(id: uuid.UUID, session: Session):
     findLessonQuery = (
         select(Lesson)
@@ -849,19 +942,6 @@ def lessonSoftDelete(id: uuid.UUID, session: Session):
         session.add(assignment)
         assignment_affected += 1
 
-    findRelatedAttendance = (
-        select(Attendance)
-        .where(Attendance.lesson_id == id, Attendance.is_delete == False)
-    )
-
-    relatedAttendance = session.exec(findRelatedAttendance).all()
-
-    attendance_affected: int = 0
-    for attendance in relatedAttendance:
-        attendance.is_delete = True
-        session.add(attendance)
-        attendance_affected += 1
-
     currentLesson.is_delete = True
     session.add(currentLesson)
 
@@ -878,5 +958,4 @@ def lessonSoftDelete(id: uuid.UUID, session: Session):
         "message": "Lesson deleted successfully.",
         "exam_affected": exam_affected,
         "assignment_affected": assignment_affected,
-        "attendance_affected": attendance_affected
     }

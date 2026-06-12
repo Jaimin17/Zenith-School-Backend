@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     LLM_MODEL: str | None = None
     LLM_API_KEY: str | None = None
     LLM_BASE_URL: str | None = None
+
+    EMBEDDING_PROVIDER: Literal["ollama", "gemini"] = "ollama"
+    OLLAMA_EMBEDDING_MODEL: str = "nomic-embed-text"
+    GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
+    GEMINI_EMBEDDING_DIMENSIONS: int | None = None
+    GEMINI_API_KEY: str | None = None
     ENABLE_GENERIC_PLANNER: bool = False
     CHATBOT_DEBUG_PRINTS: bool = False
     PLANNER_MAX_STEPS: int = 5
@@ -156,6 +162,9 @@ class Settings(BaseSettings):
 
         if self.LLM_PROVIDER == "openrouter" and not self.LLM_API_KEY:
             raise ValueError("LLM_API_KEY is required when LLM_PROVIDER is 'openrouter'.")
+
+        if self.EMBEDDING_PROVIDER == "gemini" and not self.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY is required when EMBEDDING_PROVIDER is 'gemini'.")
 
         self.UPLOAD_DIR_DP.mkdir(parents=True, exist_ok=True)
 

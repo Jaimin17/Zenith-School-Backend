@@ -82,6 +82,7 @@ def getTeacherById(
     academic_year_id: Optional[uuid.UUID] = None,
 ):
     teacher = findTeacherByIdYearScoped(teacherId, session, academic_year_id)
+    print(teacher)
     return teacher
 
 

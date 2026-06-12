@@ -28,10 +28,12 @@ def getAllParent(
         search: str = None,
         page: int = 1,
         year_id: Optional[uuid.UUID] = None,
+        class_id: Optional[uuid.UUID] = None,
+        grade_id: Optional[uuid.UUID] = None,
 ):
     user, role = current_user
 
-    all_parents = getAllParentIsDeleteFalse(session, user.id, role, search, page, year_id)
+    all_parents = getAllParentIsDeleteFalse(session, user.id, role, search, page, year_id, class_id, grade_id)
     return all_parents
 
 

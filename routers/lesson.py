@@ -12,7 +12,8 @@ from repository.lesson import getAllLessonIsDeleteFalse, getAllLessonOfTeacherIs
     countAllLessonOfStudent, lessonSave, lessonUpdate, lessonSoftDelete, getLessonById, \
     getAllLessonOfCurrentWeekIsDeleteFalse, getAllLessonOfTeacherOfCurrentWeekIsDeleteFalse, \
     getAllLessonOfClassOfCurrentWeekIsDeleteFalse, getAllLessonOfStudentOfCurrentWeekIsDeleteFalse, \
-    getAllLessonList, getAllLessonsOfTeacherByYear, getAllLessonsOfClassByYear, getAllLessonsByYear
+    getAllLessonList, getAllLessonsOfTeacherByYear, getAllLessonsOfClassByYear, getAllLessonsByYear, \
+    countLessonsByYear, copyLessonsFromPreviousYear
 from schemas import LessonRead, SaveResponse, LessonSave, LessonUpdate, LessonDeleteResponse, PaginatedLessonResponse
 from datetime import datetime
 
@@ -346,6 +347,24 @@ def getAllLessonsByAcademicYear(
         if not history or not history.class_id:
             return []
         return getAllLessonsOfClassByYear(history.class_id, academic_year_id, session)
+
+
+@router.get("/countByYear", response_model=int)
+def getLessonCountByYear(
+        academic_year_id: uuid.UUID,
+        current_user: AdminUser,
+        session: SessionDep,
+):
+    return countLessonsByYear(academic_year_id, session)
+
+
+@router.post("/copyFromPreviousYear")
+def copyLessons(
+        target_year_id: uuid.UUID,
+        current_user: AdminUser,
+        session: SessionDep,
+):
+    return copyLessonsFromPreviousYear(target_year_id, session)
 
 
 @router.post("/save", response_model=SaveResponse)

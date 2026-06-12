@@ -20,7 +20,7 @@ lesson(id,name,day,start_time,end_time,is_delete, subject_id→subject.id, class
 exam(id,title,start_time,end_time,is_delete, lesson_id→lesson.id)
 assignment(id,title,description,start_date,due_date,is_delete, lesson_id→lesson.id)
 result(id,score,is_delete, student_id→student.id, exam_id→exam.id, assignment_id→assignment.id)
-attendance(id,attendance_date,present,is_delete, student_id→student.id, lesson_id→lesson.id)
+attendance(id,attendance_date,present,is_delete, student_id→student.id, class_id→"class".id)
 announcement(id,title,description,announcement_date,is_delete, class_id→"class".id)
 event(id,title,description,start_time,end_time,is_delete, class_id→"class".id)
 holiday(id,date,name,description)
@@ -35,7 +35,7 @@ FK DIRECTIONS (critical — do not reverse these):
   lesson.class_id → "class".id         JOIN "class" c ON c.id = l.class_id
   lesson.teacher_id → teacher.id       JOIN teacher t ON t.id = l.teacher_id
   attendance.student_id → student.id   JOIN student st ON st.id = a.student_id
-  attendance.lesson_id → lesson.id     JOIN lesson l ON l.id = a.lesson_id
+  attendance.class_id → "class".id     JOIN "class" c ON c.id = a.class_id
   student.class_id → "class".id        JOIN "class" c ON c.id = st.class_id
   student_class_history.student_id → student.id JOIN student st ON st.id = sch.student_id
   student_class_history.academic_year_id → academic_year.id JOIN academic_year ay ON ay.id = sch.academic_year_id

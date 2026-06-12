@@ -6,13 +6,13 @@ from fastapi import HTTPException, UploadFile
 from psycopg import IntegrityError
 from sqlalchemy import func, Select, or_
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 import os
 
 from core.FileStorage import process_and_save_image, cleanup_image
 from core.config import settings
 from core.security import get_password_hash
-from models import Teacher, Lesson, Subject, Class, TeacherClassHistory
+from models import Teacher, Lesson, Subject, Class, TeacherClassHistory, TeacherSubjectLink
 from repository.academicYear import getActiveAcademicYear
 from schemas import PaginatedTeacherResponse, updatePasswordModel
 
@@ -96,12 +96,15 @@ def _attach_year_scoped_data(
             )
         ).all()
 
-        subjects: List[Subject] = []
-        seen_subjects = set()
-        for lesson in lessons:
-            if lesson.subject and lesson.subject.id not in seen_subjects:
-                subjects.append(lesson.subject)
-                seen_subjects.add(lesson.subject.id)
+        subjects = session.exec(
+            select(Subject)
+            .join(TeacherSubjectLink, TeacherSubjectLink.subject_id == Subject.id)
+            .where(
+                TeacherSubjectLink.teacher_id == teacher.id,
+                Subject.is_delete == False,
+            )
+            .order_by(Subject.name)
+        ).all()
 
         teacher.classes = classes
         teacher.lessons = lessons
@@ -140,11 +143,13 @@ def getAllTeachersIsDeleteFalse(
             select(Teacher)
             .join(TeacherClassHistory, TeacherClassHistory.teacher_id == Teacher.id)
             .where(
-                Teacher.is_delete == False,
                 TeacherClassHistory.academic_year_id == filter_year_id,
             )
             .distinct()
         )
+
+        if filter_year_id == getActiveAcademicYear(session):
+            query = query.where(Teacher.is_delete == False)
     else:
         query = (
             select(Teacher)
@@ -305,7 +310,7 @@ def getAllTeachersOfClassAndIsDeleteFalse(
 def findTeacherById(teacherId: uuid.UUID, session: Session):
     query = (
         select(Teacher)
-        .where(Teacher.id == teacherId, Teacher.is_delete == False)
+        .where(Teacher.id == teacherId)
     )
     teacher = session.exec(query).first()
 
@@ -463,13 +468,16 @@ async def TeacherUpdate(teacher_data: dict, img: Optional[UploadFile], session: 
 
     findTeacherQuery = (
         select(Teacher)
-        .where(Teacher.id == teacher_data["id"], Teacher.is_delete == False)
+        .where(Teacher.id == teacher_data["id"])
     )
 
-    currentTeacher = session.exec(findTeacherQuery).first()
+    currentTeacher: Optional[Teacher] = session.exec(findTeacherQuery).first()
 
     if currentTeacher is None:
         raise HTTPException(status_code=404, detail="No teacher found with the provided ID.")
+
+    if currentTeacher.is_delete == True:
+        raise HTTPException(status_code=404, detail="Teacher is no longer active.")
 
     new_username = teacher_data["username"].strip()
     new_email = teacher_data["email"].strip().lower()
@@ -616,8 +624,11 @@ def teacherSoftDeleteWithLessonAndClassAndSubject(id: uuid.UUID, session: Sessio
             "class_affected": class_affected
         }
 
-    subject_count = len(currentTeacher.subjects) if currentTeacher.subjects else 0
-    
+    subject_links = session.exec(
+        select(TeacherSubjectLink).where(TeacherSubjectLink.teacher_id == id)
+    ).all()
+    subject_count = len(subject_links)
+
     lesson_query = (
         select(Lesson)
         .where(Lesson.teacher_id == id, Lesson.is_delete == False)
@@ -629,19 +640,17 @@ def teacherSoftDeleteWithLessonAndClassAndSubject(id: uuid.UUID, session: Sessio
         session.add(lesson)
         lesson_count += 1
 
+    for link in subject_links:
+        session.delete(link)
+
     currentTeacher.is_delete = True
     session.add(currentTeacher)
 
     try:
-        session.flush()
-        # Clear subjects after flush to avoid autoflush deadlock
-        with session.no_autoflush:
-            currentTeacher.subjects = []
         session.commit()
     except IntegrityError:
         session.rollback()
         raise HTTPException(status_code=500, detail="Error deleting teacher and related records.")
-        # refresh to get latest relationships (optional)
     session.refresh(currentTeacher)
 
     return {

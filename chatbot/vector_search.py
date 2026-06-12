@@ -10,6 +10,7 @@ from chatbot.ollama_health import (
     unreachable_message,
 )
 from chatbot.telemetry import log_event, stable_hash
+from core.config import settings
 
 
 def _extract_exact_pdf_name(search_phrase: str) -> str | None:
@@ -27,7 +28,7 @@ def search_documents(search_phrase: str, k: int = 4, request_id: str | None = No
     """
 
     started = time.perf_counter()
-    if not is_ollama_reachable():
+    if settings.EMBEDDING_PROVIDER == "ollama" and not is_ollama_reachable():
         host, port = resolve_ollama_host_port()
         message = offline_message()
         if request_id:
@@ -64,7 +65,7 @@ def search_documents(search_phrase: str, k: int = 4, request_id: str | None = No
                 k=k,
             )
     except Exception as exc:
-        if is_ollama_connection_error(exc):
+        if settings.EMBEDDING_PROVIDER == "ollama" and is_ollama_connection_error(exc):
             host, port = resolve_ollama_host_port()
             message = unreachable_message()
             if request_id:

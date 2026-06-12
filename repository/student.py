@@ -55,7 +55,7 @@ def countStudent(session: Session):
 def getStudentByIdAndIsDeleteFalse(studentId: uuid.UUID, session: Session):
     query = (
         select(Student)
-        .where(Student.id == studentId, Student.is_delete == False)
+        .where(Student.id == studentId)
     )
 
     studentDetail = session.exec(query).first()
@@ -74,7 +74,9 @@ def countStudentBySexAll(session: Session):
     return {sex: count for sex, count in results}
 
 
-def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int, year_id: uuid.UUID = None):
+def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int, year_id: uuid.UUID = None,
+                               class_id: uuid.UUID = None, grade_id: uuid.UUID = None,
+                               sex: str = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     if year_id:
@@ -86,11 +88,22 @@ def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int, year_i
                 StudentClassHistory.academic_year_id == year_id,
             )
         )
+        if class_id:
+            count_query = count_query.where(StudentClassHistory.class_id == class_id)
+        if grade_id:
+            count_query = count_query.where(StudentClassHistory.grade_id == grade_id)
     else:
         count_query = (
             select(func.count(Student.id.distinct()))
             .where(Student.is_delete == False)
         )
+        if class_id:
+            count_query = count_query.where(Student.class_id == class_id)
+        if grade_id:
+            count_query = count_query.where(Student.grade_id == grade_id)
+
+    if sex:
+        count_query = count_query.where(Student.sex == sex)
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -104,11 +117,22 @@ def getAllStudentsIsDeleteFalse(session: Session, search: str, page: int, year_i
                 StudentClassHistory.academic_year_id == year_id,
             )
         )
+        if class_id:
+            query = query.where(StudentClassHistory.class_id == class_id)
+        if grade_id:
+            query = query.where(StudentClassHistory.grade_id == grade_id)
     else:
         query = (
             select(Student)
             .where(Student.is_delete == False)
         )
+        if class_id:
+            query = query.where(Student.class_id == class_id)
+        if grade_id:
+            query = query.where(Student.grade_id == grade_id)
+
+    if sex:
+        query = query.where(Student.sex == sex)
 
     query = query.order_by(func.lower(Student.username))
 
@@ -165,7 +189,8 @@ def _attach_year_scoped_data(
 
 
 def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UUID, search: str, page: int,
-                                            year_id: uuid.UUID = None):
+                                            year_id: uuid.UUID = None, class_id: uuid.UUID = None,
+                                            grade_id: uuid.UUID = None, sex: str = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     if year_id:
@@ -180,6 +205,10 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
                 Lesson.is_delete == False,
             )
         )
+        if class_id:
+            count_query = count_query.where(StudentClassHistory.class_id == class_id)
+        if grade_id:
+            count_query = count_query.where(StudentClassHistory.grade_id == grade_id)
     else:
         count_query = (
             select(func.count(Student.id.distinct()))
@@ -190,6 +219,13 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
                 Lesson.teacher_id == teacherId,
             )
         )
+        if class_id:
+            count_query = count_query.where(Student.class_id == class_id)
+        if grade_id:
+            count_query = count_query.where(Student.grade_id == grade_id)
+
+    if sex:
+        count_query = count_query.where(Student.sex == sex)
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -207,6 +243,10 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
             )
             .distinct()
         )
+        if class_id:
+            query = query.where(StudentClassHistory.class_id == class_id)
+        if grade_id:
+            query = query.where(StudentClassHistory.grade_id == grade_id)
     else:
         query = (
             select(Student)
@@ -218,6 +258,13 @@ def getAllStudentsOfTeacherAndIsDeleteFalse(session: Session, teacherId: uuid.UU
             )
             .distinct()
         )
+        if class_id:
+            query = query.where(Student.class_id == class_id)
+        if grade_id:
+            query = query.where(Student.grade_id == grade_id)
+
+    if sex:
+        query = query.where(Student.sex == sex)
 
     query = query.order_by(Student.username)
     query = addSearchOption(query, search)
@@ -836,6 +883,17 @@ def bulkPromoteStudents(
             section = cls.name.split("-", 1)[-1].strip()
             class_by_grade_section[(cls.grade_id, section)] = cls
 
+    # ── pre-compute existing to_year class occupancy for in-memory capacity checks ──
+    occupancy_rows = session.exec(
+        select(StudentClassHistory.class_id, func.count())
+        .where(
+            StudentClassHistory.academic_year_id == to_year_id,
+            StudentClassHistory.class_id != None,
+        )
+        .group_by(StudentClassHistory.class_id)
+    ).all()
+    class_assigned_counts: dict = {class_id: count for class_id, count in occupancy_rows}
+
     results: List[PromoteStudentResult] = []
     promoted_count = graduated_count = skipped_count = class_not_found_count = error_count = 0
 
@@ -860,6 +918,17 @@ def bulkPromoteStudents(
                     student_name=f"{student.first_name} {student.last_name}",
                     action="skipped",
                     detail="Already enrolled in the target academic year.",
+                ))
+                continue
+
+            # ── skip students with no class assignment — no error, no new class ──
+            if not history.class_id:
+                skipped_count += 1
+                results.append(PromoteStudentResult(
+                    student_id=student.id,
+                    student_name=f"{student.first_name} {student.last_name}",
+                    action="skipped",
+                    detail="No class assignment — skipped.",
                 ))
                 continue
 
@@ -941,6 +1010,19 @@ def bulkPromoteStudents(
                         assigned_class_name = next_class.name
                     else:
                         section_missing = True
+                        
+            if next_class and class_assigned_counts.get(next_class.id, 0) >= next_class.capacity:
+                skipped_count += 1
+                results.append(PromoteStudentResult(
+                    student_id=student.id,
+                    student_name=f"{student.first_name} {student.last_name}",
+                    action="skipped",
+                    from_grade_level=current_level,
+                    to_grade_level=next_level,
+                    previous_class_name=previous_class_name,
+                    detail=f"Target class '{assigned_class_name}' is full.",
+                ))
+                continue
 
             if not dry_run:
                 # Create to_year history record
@@ -956,6 +1038,10 @@ def bulkPromoteStudents(
                     student.grade_id = next_grade.id
                     student.class_id = next_class.id if next_class else None
                     session.add(student)
+
+            # Track assignment in-memory so subsequent students in this run see the updated count
+            if next_class:
+                class_assigned_counts[next_class.id] = class_assigned_counts.get(next_class.id, 0) + 1
 
             if section_missing:
                 class_not_found_count += 1

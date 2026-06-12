@@ -32,7 +32,7 @@ def countParent(session: Session):
 
 
 def getAllParentIsDeleteFalse(session: Session, user_id: uuid.UUID, role: str, search: str = None, page: int = 1,
-                              year_id=None):
+                              year_id=None, class_id: uuid.UUID = None, grade_id: uuid.UUID = None):
     offset_value = (page - 1) * settings.ITEMS_PER_PAGE
 
     if year_id:
@@ -46,18 +46,27 @@ def getAllParentIsDeleteFalse(session: Session, user_id: uuid.UUID, role: str, s
                 StudentClassHistory.academic_year_id == year_id,
             )
         )
-
         if role == UserRole.TEACHER:
             count_query = count_query.join(
                 Lesson, onclause=(Lesson.class_id == StudentClassHistory.class_id)
-            ).where(
-                Lesson.teacher_id == user_id
-            )
+            ).where(Lesson.teacher_id == user_id)
+        if class_id:
+            count_query = count_query.where(StudentClassHistory.class_id == class_id)
+        if grade_id:
+            count_query = count_query.where(StudentClassHistory.grade_id == grade_id)
     else:
         count_query = (
             select(func.count(Parent.id.distinct()))
             .where(Parent.is_delete == False)
         )
+        if class_id or grade_id:
+            count_query = count_query.join(Student, onclause=(Student.parent_id == Parent.id)).where(
+                Student.is_delete == False
+            )
+            if class_id:
+                count_query = count_query.where(Student.class_id == class_id)
+            if grade_id:
+                count_query = count_query.where(Student.grade_id == grade_id)
 
     count_query = addSearchOption(count_query, search)
     total_count = session.exec(count_query).one()
@@ -73,18 +82,27 @@ def getAllParentIsDeleteFalse(session: Session, user_id: uuid.UUID, role: str, s
                 StudentClassHistory.academic_year_id == year_id,
             )
         )
-
         if role == UserRole.TEACHER:
             query = query.join(
                 Lesson, onclause=(Lesson.class_id == StudentClassHistory.class_id)
-            ).where(
-                Lesson.teacher_id == user_id
-            )
+            ).where(Lesson.teacher_id == user_id)
+        if class_id:
+            query = query.where(StudentClassHistory.class_id == class_id)
+        if grade_id:
+            query = query.where(StudentClassHistory.grade_id == grade_id)
     else:
         query = (
             select(Parent)
             .where(Parent.is_delete == False)
         )
+        if class_id or grade_id:
+            query = query.join(Student, onclause=(Student.parent_id == Parent.id)).where(
+                Student.is_delete == False
+            )
+            if class_id:
+                query = query.where(Student.class_id == class_id)
+            if grade_id:
+                query = query.where(Student.grade_id == grade_id)
 
     query = query.order_by(func.lower(Parent.username))
 
@@ -121,10 +139,7 @@ def getFullListOfParentsIsDeleteFalse(session: Session):
 def getParentById(parentId: uuid.UUID, session: Session):
     query = (
         select(Parent)
-        .where(
-            Parent.id == parentId,
-            Parent.is_delete == False
-        )
+        .where(Parent.id == parentId)
     )
 
     parent_detail: Optional[Parent] = session.exec(query).first()

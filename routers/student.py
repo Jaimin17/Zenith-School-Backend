@@ -52,13 +52,16 @@ def getAllStudents(
     search: str = None,
     page: int = 1,
     year_id: Optional[uuid.UUID] = None,
+    class_id: Optional[uuid.UUID] = None,
+    grade_id: Optional[uuid.UUID] = None,
+    sex: Optional[str] = None,
 ):
     user, role = current_user
 
     if role == "admin":
-        all_students = getAllStudentsIsDeleteFalse(session, search, page, year_id)
+        all_students = getAllStudentsIsDeleteFalse(session, search, page, year_id, class_id, grade_id, sex)
     elif role == "teacher":
-        all_students = getAllStudentsOfTeacherAndIsDeleteFalse(session, user.id, search, page, year_id)
+        all_students = getAllStudentsOfTeacherAndIsDeleteFalse(session, user.id, search, page, year_id, class_id, grade_id, sex)
     else:
         all_students = getAllStudentsOfParentAndIsDeleteFalse(session, user.id, search, page, year_id)
     return all_students
@@ -487,7 +490,6 @@ def getMyYearData(
     Student self-service: Return year data (attendance, results, lessons) for the authenticated student.
     """
     from models import Class, Grade
-    from sqlmodel import select as _select
     user, role = current_user
     if role != "student":
         raise HTTPException(status_code=403, detail="Only students can access this endpoint.")

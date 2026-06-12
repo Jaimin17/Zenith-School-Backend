@@ -185,7 +185,7 @@ class Class(SQLModel, table=True):
     __tablename__ = "class"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    name: str = Field(nullable=False, unique=True)
+    name: str = Field(nullable=False)
     capacity: int = Field(nullable=False)
     is_delete: bool = Field(default=False, nullable=False)
 
