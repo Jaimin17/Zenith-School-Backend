@@ -74,23 +74,23 @@ if settings.all_cors_origins:
     )
 
 upload_images_path = Path(settings.UPLOAD_DIR_DP).absolute()
-
-if upload_images_path.exists():
-    app.mount(
-        "/uploads/images",
-        StaticFiles(directory=str(upload_images_path)),
-        name="images"
-    )
-    print(f"✓ Mounted: {upload_images_path}")
+upload_images_path.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/uploads/images",
+    StaticFiles(directory=str(upload_images_path)),
+    name="images"
+)
+print(f"✓ Mounted: {upload_images_path}")
 
 # Mount PDFs directory
-if settings.UPLOAD_DIR_PDF.exists():
-    app.mount(
-        "/uploads/pdfs",
-        StaticFiles(directory=str(settings.UPLOAD_DIR_PDF)),
-        name="pdfs"
-    )
-    print(f"✓ Static files mounted at /uploads/pdfs")
+upload_pdfs_path = Path(settings.UPLOAD_DIR_PDF).absolute()
+upload_pdfs_path.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/uploads/pdfs",
+    StaticFiles(directory=str(upload_pdfs_path)),
+    name="pdfs"
+)
+print(f"✓ Static files mounted at /uploads/pdfs")
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
